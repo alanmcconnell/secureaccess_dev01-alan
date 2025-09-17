@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Landing Page - Web App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+
+        h1 {
+            color: #333;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 30px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            font-size: 14px;
+            padding: 10px 20px;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #5a6268;
+            transform: translateY(-1px);
+        }
+
+        .parameter-display {
+            background: #f8f9fa;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .parameter-display h3 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .parameter-value {
+            color: #667eea;
+            font-size: 16px;
+            font-weight: 500;
+            word-break: break-all;
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .no-parameter {
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .debug-section {
+            background: #e3f2fd;
+            border: 2px solid #2196f3;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: left;
+        }
+
+        .debug-section h4 {
+            color: #1976d2;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .debug-info {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #90caf9;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .token-warning {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            color: #856404;
+        }
+
+        .token-warning.mock {
+            background: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+        }
+
+        .token-warning.real {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 30px 20px;
+                max-width: 90%;
+            }
+            
+            h1 {
+                font-size: 28px;
+            }
+            
+            .btn {
+                padding: 12px 25px;
+                font-size: 16px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 24px;
+            }
+            
+            .parameter-display h3 {
+                font-size: 16px;
+            }
+            
+            .parameter-value {
+                font-size: 14px;
+            }
+
+            .container {
+                padding: 20px 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to your Web App Landing Page.</h1>
+        
+        <button class="btn" onclick="window['SA_openUpdateProfile'](getUserId())">Update Profile</button>\
+        <button class="btn" onclick="window.location.href='token-test.html?auth_token=' + localStorage.getItem('authToken') + '&login_status=success'">Go to Test Token</button>
+                
+        <div class="parameter-display">
+            <h3>Login Information:</h3>
+            <div class="parameter-value" id="parameterValue">
+                <span class="no-parameter">No parameters found</span>
+            </div>
+        </div>
+
+        <!-- Token Analysis Section -->
+        <div class="token-warning" id="tokenAnalysis" style="display: none;">
+            <h4 id="tokenStatus">Token Status</h4>
+            <div id="tokenDetails"></div>
+        </div>
+
+        <!-- Debug Section -->
+        <div class="debug-section">
+            <h4>🔍 Debug Information</h4>
+            <div class="debug-info" id="debugInfo">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+        // State management
+        let loginParams = {};
+
+        // Get user ID from URL parameters
+        function getUserId() {
+            return loginParams.user_id || 'unknown';
+        }
+
+        // Decode JWT payload (without verification - client-side only)
+        function decodeJWTPayload(token) {
+            try {
+                if (!token || token === 'unknown') {
+                    console.log('Token is null or unknown');
+                    return null;
+                }
+                
+                const parts = token.split('.');
+                if (parts.length !== 3) {
+                    console.log('Token does not have 3 parts:', parts.length);
+                    return null;
+                }
+                
+                console.log('Decoding token part:', parts[1]);
+                const payload = JSON.parse(atob(parts[1]));
+                console.log('Decoded payload:', payload);
+                return payload;
+            } catch (error) {
+                console.error('Error decoding JWT:', error);
+                console.error('Token being decoded:', token);
+                return null;
+            }
+        }
+
+        // Check if token is a mock token
+        function isMockToken(token) {
+            if (!token) return false;
+            return token.includes('mock-jwt-token') || token.startsWith('mock-');
+        }
+
+        // Analyze the token
+        function analyzeToken(token) {
+            const tokenAnalysis = document.getElementById('tokenAnalysis');
+            const tokenStatus = document.getElementById('tokenStatus');
+            const tokenDetails = document.getElementById('tokenDetails');
+
+            if (!token || token === 'unknown') {
+                tokenAnalysis.style.display = 'block';
+                tokenAnalysis.className = 'token-warning';
+                tokenStatus.textContent = '⚠️ No Token Found';
+                tokenDetails.innerHTML = 'No authentication token was provided in the URL parameters.';
+                return;
+            }
+
+            tokenAnalysis.style.display = 'block';
+
+            if (isMockToken(token)) {
+                tokenAnalysis.className = 'token-warning mock';
+                tokenStatus.textContent = '❌ Mock Token Detected';
+                tokenDetails.innerHTML = `
+                    <strong>Warning:</strong> You are using a mock token instead of a real JWT token.<br>
+                    <strong>Token:</strong> ${token}<br>
+                    <strong>Issue:</strong> The login process is not generating real JWT tokens.
+                `;
+            } else {
+                // Try to decode as real JWT
+                const payload = decodeJWTPayload(token);
+                
+                if (payload) {
+                    tokenAnalysis.className = 'token-warning real';
+                    tokenStatus.textContent = '✅ Real JWT Token';
+                    
+                    const exp = payload.exp ? new Date(payload.exp * 1000) : null;
+                    const iat = payload.iat ? new Date(payload.iat * 1000) : null;
+                    const isExpired = exp ? new Date() > exp : false;
+                    
+                    tokenDetails.innerHTML = `
+                        <strong>Status:</strong> Valid JWT token received<br>
+                        <strong>User ID:</strong> ${payload.userId || payload.user_id || payload.sub || 'Not found'}<br>
+                        <strong>Username:</strong> ${payload.username || payload.name || 'Not found'}<br>
+                        <strong>Email:</strong> ${payload.email || 'Not found'}<br>
+                        <strong>Role:</strong> ${payload.role || 'Not found'}<br>
+                        <strong>Permissions:</strong> ${Array.isArray(payload.permissions) ? payload.permissions.join(', ') : 'None'}<br>
+                        <strong>Issued:</strong> ${iat ? iat.toLocaleString() : 'Unknown'}<br>
+                        <strong>Expires:</strong> ${exp ? exp.toLocaleString() : 'Unknown'}<br>
+                        <strong>Expired:</strong> ${isExpired ? 'Yes' : 'No'}
+                    `;
+                } else {
+                    tokenAnalysis.className = 'token-warning';
+                    tokenStatus.textContent = '⚠️ Invalid Token Format';
+                    tokenDetails.innerHTML = `
+                        <strong>Warning:</strong> Token doesn't appear to be a valid JWT format.<br>
+                        <strong>Token:</strong> ${token.substring(0, 50)}...
+                    `;
+                }
+            }
+        }
+
+        function displayParameters() {
+            const parameterElement = document.getElementById('parameterValue');
+            const debugElement = document.getElementById('debugInfo');
+            
+            // Get token from localStorage
+            const authToken = localStorage.getItem('authToken');
+            
+            // Debug information
+            console.log('Token from localStorage:', authToken);
+            
+            const debugInfo = {
+                url: window.location.href,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                localStorage: {
+                    authToken: authToken ? `${authToken.substring(0, 20)}...` : 'Not found',
+                    refreshToken: localStorage.getItem('refreshToken') || 'Not found'
+                },
+                tokenLength: authToken ? authToken.length : 0
+            };
+
+            debugElement.textContent = JSON.stringify(debugInfo, null, 2);
+
+            // Update parameter display
+            parameterElement.innerHTML = '<span>Using token from localStorage</span>';
+
+            // Analyze the token from localStorage
+            if (authToken) {
+                analyzeToken(authToken);
+            } else {
+                const tokenStatus = document.getElementById('tokenStatus');
+                const tokenDetails = document.getElementById('tokenDetails');
+                const tokenAnalysis = document.getElementById('tokenAnalysis');
+                
+                tokenAnalysis.className = 'token-error';
+                tokenStatus.textContent = '❌ No Token Found';
+                tokenDetails.innerHTML = 'No authentication token found in localStorage';
+            }
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            displayParameters();
+        });
+    </script>
+</body>
+</html>

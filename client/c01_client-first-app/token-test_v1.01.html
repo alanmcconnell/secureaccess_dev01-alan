@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JWT Token Test Page</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+
+        .status-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .status-header {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-label {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .status-value {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .status-value.success {
+            color: #28a745;
+        }
+
+        .status-value.error {
+            color: #dc3545;
+        }
+
+        .status-value.warning {
+            color: #ffc107;
+        }
+
+        .status-value.info {
+            color: #007bff;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .badge.warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .test-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert.warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+        }
+
+        .alert.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .token-display {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .token-display h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .token-content {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            color: #666;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .user-info {
+            background: #e8f4f8;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            border: 1px solid #b8e0ed;
+        }
+
+        .user-info h3 {
+            font-size: 16px;
+            color: #0c5460;
+            margin-bottom: 10px;
+        }
+
+        .user-detail {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            font-size: 14px;
+        }
+
+        .icon {
+            width: 20px;
+            height: 20px;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        @media (max-width: 600px) {
+            .test-controls {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+
+            .status-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <span class="icon">🔐</span>
+            JWT Token Test Page
+        </h1>
+        <p class="subtitle">Test JWT authentication and token validation</p>
+
+        <!-- Alert Messages -->
+        <div id="alert" class="alert"></div>
+
+        <!-- Loading Spinner -->
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Testing authentication...</p>
+        </div>
+
+        <!-- Authentication Status -->
+        <div class="status-section">
+            <div class="status-header">Authentication Status</div>
+            
+            <div class="status-item">
+                <span class="status-label">Authentication State:</span>
+                <span id="authState" class="status-value error">Not Authenticated</span>
+            </div>
+
+            <div class="status-item">
+                <span class="status-label">JWT Token (Cookie):</span>
+                <span id="jwtStatus" class="badge error">Not Found</span>
+            </div>
+
+            <div class="status-item">
+                <span class="status-label">CSRF Token:</span>
+                <span id="csrfStatus" class="badge error">Not Found</span>
+            </div>
+
+            <div class="status-item">
+                <span class="status-label">Server Connection:</span>
+                <span id="serverStatus" class="status-value warning">Not Tested</span>
+            </div>
+
+            <div class="status-item">
+                <span class="status-label">Token Expiration:</span>
+                <span id="tokenExpiry" class="status-value info">Unknown</span>
+            </div>
+
+            <div class="status-item">
+                <span class="status-label">Last Check:</span>
+                <span id="lastCheck" class="status-value">Never</span>
+            </div>
+        </div>
+
+        <!-- User Information (shown when authenticated) -->
+        <div id="userInfo" class="user-info" style="display: none;">
+            <h3>👤 User Information</h3>
+            <div id="userDetails"></div>
+        </div>
+
+        <!-- Test Controls -->
+        <div class="test-controls">
+            <button class="btn btn-primary" onclick="checkAuthentication()">
+                🔍 Check Authentication
+            </button>
+            
+            <button class="btn btn-success" onclick="testProtectedRoute()">
+                🛡️ Test Protected Route
+            </button>
+            
+            <button class="btn btn-warning" onclick="testTokenRefresh()">
+                🔄 Test Token Refresh
+            </button>
+            
+            <button class="btn btn-info" onclick="showTokenDetails()">
+                📋 Show Token Details
+            </button>
+            
+            <button class="btn btn-danger" onclick="clearTokens()">
+                🗑️ Clear Tokens
+            </button>
+        </div>
+
+        <!-- Token Display Area -->
+        <div id="tokenDisplay" class="token-display" style="display: none;">
+            <h3>Token Information</h3>
+            <div id="tokenContent" class="token-content"></div>
+        </div>
+
+        <!-- Test Actions -->
+        <div class="test-controls" style="margin-top: 30px;">
+            <button class="btn btn-primary" onclick="redirectToLogin()">
+                🔑 Go to Login Page
+            </button>
+            
+            <button class="btn btn-success" onclick="simulateValidToken()">
+                ✅ Simulate Valid Token
+            </button>
+            
+            <button class="btn btn-danger" onclick="simulateExpiredToken()">
+                ⏰ Simulate Expired Token
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = 'http://localhost:3000/api';
+        const LOGIN_PAGE = 'login_client.html';
+
+        // Check authentication status on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Token Test Page Loaded');
+            checkPageAccessibility();
+            checkServerConnection();
+        });
+
+        // Check if page was accessed directly without authentication
+        function checkPageAccessibility() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const hasAuthParam = urlParams.get('auth_token');
+            const hasCookie = document.cookie.includes('authToken');
+            const hasSessionStorage = sessionStorage.getItem('csrfToken');
+            
+            if (!hasAuthParam && !hasCookie && !hasSessionStorage) {
+                showAlert('⚠️ Warning: Page accessed directly without authentication token. You should authenticate first.', 'warning');
+                updateStatus('authState', 'Direct Access - No Token', 'error');
+            }
+            
+            // Check for URL parameters that might indicate authentication
+            if (urlParams.get('login_status') === 'success') {
+                showAlert('✅ Redirected from successful login', 'success');
+            }
+        }
+
+        // Check server connection
+        async function checkServerConnection() {
+            try {
+                const response = await fetch(`${API_BASE_URL.replace('/api', '')}/health`);
+                if (response.ok) {
+                    updateStatus('serverStatus', 'Connected', 'success');
+                } else {
+                    updateStatus('serverStatus', 'Server Error', 'error');
+                }
+            } catch (error) {
+                updateStatus('serverStatus', 'Disconnected', 'error');
+                showAlert('❌ Cannot connect to server. Make sure the backend is running.', 'error');
+            }
+        }
+
+        // Check authentication status
+        async function checkAuthentication() {
+            showLoading(true);
+            hideAlert();
+            
+            try {
+                // Check for CSRF token in sessionStorage
+                const csrfToken = sessionStorage.getItem('csrfToken');
+                updateStatus('csrfStatus', csrfToken ? 'Found' : 'Not Found', 
+                           csrfToken ? 'success' : 'error', true);
+
+                // Try to verify authentication with server
+                const response = await fetch(`${API_BASE_URL}/auth/verify`, {
+                    method: 'GET',
+                    credentials: 'include', // Include cookies
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(csrfToken && { 'X-CSRF-Token': csrfToken })
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Update authentication status
+                    updateStatus('authState', 'Authenticated', 'success');
+                    updateStatus('jwtStatus', 'Valid', 'success', true);
+                    
+                    // Show user information
+                    if (data.user) {
+                        showUserInfo(data.user);
+                    }
+                    
+                    // Check token expiration if available
+                    if (data.expiresIn) {
+                        const expiryTime = new Date(Date.now() + data.expiresIn * 1000);
+                        updateStatus('tokenExpiry', expiryTime.toLocaleTimeString(), 'info');
+                    }
+                    
+                    showAlert('✅ Authentication verified successfully!', 'success');
+                } else if (response.status === 401) {
+                    updateStatus('authState', 'Not Authenticated', 'error');
+                    updateStatus('jwtStatus', 'Invalid or Expired', 'error', true);
+                    showAlert('❌ Authentication failed: Invalid or expired token', 'error');
+                } else if (response.status === 403) {
+                    updateStatus('authState', 'CSRF Token Invalid', 'warning');
+                    showAlert('⚠️ CSRF token validation failed', 'warning');
+                }
+                
+            } catch (error) {
+                console.error('Authentication check failed:', error);
+                updateStatus('authState', 'Check Failed', 'error');
+                showAlert('❌ Failed to check authentication: ' + error.message, 'error');
+            } finally {
+                updateStatus('lastCheck', new Date().toLocaleTimeString(), 'info');
+                showLoading(false);
+            }
+        }
+
+        // Test protected route access
+        async function testProtectedRoute() {
+            showLoading(true);
+            hideAlert();
+            
+            try {
+                const csrfToken = sessionStorage.getItem('csrfToken');
+                
+                const response = await fetch(`${API_BASE_URL}/user/profile`, {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(csrfToken && { 'X-CSRF-Token': csrfToken })
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showAlert('✅ Protected route accessed successfully!', 'success');
+                    console.log('Protected route data:', data);
+                } else if (response.status === 401) {
+                    showAlert('❌ Access denied: Authentication required', 'error');
+                } else if (response.status === 403) {
+                    showAlert('⚠️ Access denied: Invalid CSRF token', 'warning');
+                }
+                
+            } catch (error) {
+                showAlert('❌ Failed to access protected route: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Test token refresh
+        async function testTokenRefresh() {
+            showLoading(true);
+            hideAlert();
+            
+            try {
+                const csrfToken = sessionStorage.getItem('csrfToken');
+                
+                const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(csrfToken && { 'X-CSRF-Token': csrfToken })
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Update CSRF token if provided
+                    if (data.csrfToken) {
+                        sessionStorage.setItem('csrfToken', data.csrfToken);
+                        updateStatus('csrfStatus', 'Refreshed', 'success', true);
+                    }
+                    
+                    showAlert('✅ Token refreshed successfully!', 'success');
+                    checkAuthentication(); // Recheck authentication
+                } else {
+                    showAlert('❌ Token refresh failed', 'error');
+                }
+                
+            } catch (error) {
+                showAlert('❌ Failed to refresh token: ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Show token details
+        function showTokenDetails() {
+            const tokenDisplay = document.getElementById('tokenDisplay');
+            const tokenContent = document.getElementById('tokenContent');
+            
+            // Get CSRF token
+            const csrfToken = sessionStorage.getItem('csrfToken');
+            
+            // Try to get auth token from localStorage (if old implementation)
+            const localAuthToken = localStorage.getItem('authToken');
+            
+            // Check cookies (note: HTTP-only cookies won't be visible)
+            const cookies = document.cookie.split(';').map(c => c.trim());
+            const visibleCookies = cookies.filter(c => c && !c.startsWith('authToken'));
+            
+            let details = '<strong>Token Storage Information:</strong><br><br>';
+            
+            details += '<strong>CSRF Token (sessionStorage):</strong><br>';
+            details += csrfToken ? `${csrfToken.substring(0, 20)}...` : 'Not found';
+            details += '<br><br>';
+            
+            details += '<strong>Auth Token (localStorage - legacy):</strong><br>';
+            details += localAuthToken ? `${localAuthToken.substring(0, 20)}...` : 'Not found (good - using HTTP-only cookies)';
+            details += '<br><br>';
+            
+            details += '<strong>Visible Cookies:</strong><br>';
+            details += visibleCookies.length > 0 ? visibleCookies.join('<br>') : 'No visible cookies';
+            details += '<br><br>';
+            
+            details += '<strong>Note:</strong> JWT token should be in HTTP-only cookie (not visible to JavaScript)';
+            
+            tokenContent.innerHTML = details;
+            tokenDisplay.style.display = 'block';
+        }
+
+        // Clear all tokens
+        function clearTokens() {
+            // Clear sessionStorage
+            sessionStorage.removeItem('csrfToken');
+            
+            // Clear localStorage (legacy)
+            localStorage.removeItem('authToken');
+            
+            // Update UI
+            updateStatus('authState', 'Tokens Cleared', 'warning');
+            updateStatus('jwtStatus', 'Cleared', 'warning', true);
+            updateStatus('csrfStatus', 'Cleared', 'warning', true);
+            
+            document.getElementById('userInfo').style.display = 'none';
+            document.getElementById('tokenDisplay').style.display = 'none';
+            
+            showAlert('🗑️ All client-side tokens cleared. Server-side cookie may still exist until logout.', 'info');
+        }
+
+        // Simulate valid token (for testing)
+        function simulateValidToken() {
+            // Set a fake CSRF token
+            sessionStorage.setItem('csrfToken', 'SIMULATED_CSRF_TOKEN_' + Date.now());
+            
+            updateStatus('csrfStatus', 'Simulated', 'warning', true);
+            showAlert('✅ Simulated CSRF token created. Note: This won\'t work with actual server validation.', 'info');
+            
+            // Show fake user info
+            showUserInfo({
+                userId: 'sim_123',
+                username: 'test_user',
+                email: 'test@example.com'
+            });
+        }
+
+        // Simulate expired token
+        function simulateExpiredToken() {
+            updateStatus('authState', 'Token Expired', 'error');
+            updateStatus('jwtStatus', 'Expired', 'error', true);
+            updateStatus('tokenExpiry', 'Expired at ' + new Date().toLocaleTimeString(), 'error');
+            
+            showAlert('⏰ Simulating expired token state', 'warning');
+        }
+
+        // Redirect to login page
+        function redirectToLogin() {
+            window.location.href = LOGIN_PAGE;
+        }
+
+        // Show user information
+        function showUserInfo(user) {
+            const userInfo = document.getElementById('userInfo');
+            const userDetails = document.getElementById('userDetails');
+            
+            userDetails.innerHTML = `
+                <div class="user-detail">
+                    <strong>User ID:</strong>
+                    <span>${user.userId || user.user_id || 'N/A'}</span>
+                </div>
+                <div class="user-detail">
+                    <strong>Username:</strong>
+                    <span>${user.username || 'N/A'}</span>
+                </div>
+                <div class="user-detail">
+                    <strong>Email:</strong>
+                    <span>${user.email || 'N/A'}</span>
+                </div>
+                <div class="user-detail">
+                    <strong>Roles:</strong>
+                    <span>${user.roles ? user.roles.join(', ') : 'N/A'}</span>
+                </div>
+            `;
+            
+            userInfo.style.display = 'block';
+        }
+
+        // Update status display
+        function updateStatus(elementId, value, className, isBadge = false) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.textContent = value;
+                element.className = isBadge ? `badge ${className}` : `status-value ${className}`;
+            }
+        }
+
+        // Show/hide loading
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            loading.className = show ? 'loading show' : 'loading';
+        }
+
+        // Show alert message
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert ${type} show`;
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                alert.className = 'alert';
+            }, 5000);
+        }
+
+        // Hide alert
+        function hideAlert() {
+            const alert = document.getElementById('alert');
+            alert.className = 'alert';
+        }
+    </script>
+</body>
+</html>

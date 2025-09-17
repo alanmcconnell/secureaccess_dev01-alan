@@ -1,0 +1,108 @@
+alanmcconnell: Guild sessions:
+Please write me a markdown document that answers the folllowing instructions.
+
+## Overview
+Please describe this working application for management. 
+
+## Specs
+Please write all the specs for this application.
+
+
+Workspace: Enable Claude Sonnet 3.5 for all clients
+Enable access to the latest Claude 3.5 Sonnet model from Anthropic. [Learn more about how GitHub Copilot serves Claude 3.5 Sonnet](https://docs.github.com/copilot/using-github-copilot/using-claude-sonnet-in-github-copilot).
+
+alanmcconnell: @workspace Enable: "Enable Claude Sonnet 3.5 for all clients"
+
+Workspace: Collecting workspace information# SecureAccess Application Overview
+
+## Overview
+SecureAccess is a secure authentication and user management system built with modern web technologies. The application provides a robust login, registration and user profile management interface with advanced security features including:
+
+- Two-factor authentication (2FA)
+- Security questions for account recovery
+- Password strength validation
+- JWT token-based authentication
+- User status tracking (active/inactive/locked)
+
+The application follows a client-server architecture with a responsive web frontend communicating with a RESTful API backend.
+
+## Specs
+
+### Frontend
+- **Technology**: HTML, CSS, JavaScript (Vanilla)
+- **UI Framework**: Custom CSS with responsive design
+- **External Libraries**: 
+  - QRious for QR code generation
+  - CDN hosted dependencies
+
+### Backend
+- **Server**: Node.js with Express.js
+- **Database**: MySQL 
+- **Port**: 54032
+- **API Base URL**: `http://localhost:54032/api`
+
+### Authentication Features
+- JWT token-based authentication
+- Configurable token expiration (30 min - 8 hours)
+- Two-factor authentication using TOTP
+- Security questions for account recovery
+- Password reset functionality
+- Rate limiting (50 requests per 15 minutes)
+
+### User Management
+- User registration with:
+  - First/Last name
+  - Username
+  - Email
+  - Password
+  - Optional 2FA
+  - Optional security questions
+- User profile updates
+- Account status management (active/inactive/locked)
+- Last login tracking
+- Session management
+
+### Security Features
+- bcrypt password hashing with salts 
+- JWT secret versioning
+- Input validation using Joi
+- SQL injection protection
+- HTTPS support
+- Rate limiting
+- XSS protection
+- CORS configured
+
+### Database Schema
+Core tables include:
+- users
+- user_sessions  
+- jwt_tokens
+- audit_log
+
+### User Interface Components
+- Login form
+- Registration form
+- Password reset flow
+- Profile update form
+- Dashboard with user details
+- 2FA setup with QR code
+- Security question management
+- Status indicators
+- Loading states
+- Alert messages
+
+### Responsive Design
+- Desktop optimized
+- Mobile responsive
+- Landscape mode support
+- Touch device optimizations
+- Support for very small screens (320px)
+
+### Performance Features
+- Optimized database queries
+- Connection pooling
+- Caching headers
+- Minified assets
+- Async operations
+
+This enterprise-grade authentication system provides a solid foundation for securing access to other applications and services.

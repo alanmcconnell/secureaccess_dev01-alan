@@ -1,0 +1,1778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>SecureAccess - Login</title>
+    <!-- Include shared functions -->
+    <script src="shared-functions.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            font-size: 14px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.97);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            padding: 20px;
+            width: 100%;
+            max-width: 380px;
+            position: relative;
+            overflow: hidden;
+            max-height: 95vh;
+            overflow-y: auto;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .logo h1 {
+            color: #333;
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+
+        .logo p {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 3px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 10px 8px;
+            text-align: center;
+            border-radius: 7px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            color: #666;
+            font-size: 13px;
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 3px 8px rgba(102, 126, 234, 0.3);
+        }
+
+        .form-container {
+            position: relative;
+        }
+
+        .form {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .form.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 4px;
+            color: #333;
+            font-weight: 500;
+            font-size: 13px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1.5px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            background: white;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+
+        input.error {
+            border-color: #e74c3c;
+            box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.1);
+        }
+
+        .password-container {
+            position: relative;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #666;
+            user-select: none;
+            font-size: 16px;
+            padding: 4px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 15px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+            transform: scale(0.9);
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            font-size: 12px;
+            cursor: pointer;
+            line-height: 1.3;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 11px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            font-size: 13px;
+            padding: 9px;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #5a6268;
+            transform: translateY(-1px);
+        }
+
+        .button-row {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .button-row .btn {
+            flex: 1;
+            margin-bottom: 0;
+            font-size: 12px;
+            padding: 8px;
+        }
+
+        .alert {
+            padding: 10px 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            display: none;
+            line-height: 1.3;
+        }
+
+        .alert.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .security-questions {
+            display: none;
+            border: 1.5px solid #e1e5e9;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+        }
+
+        .security-questions.show {
+            display: block;
+        }
+
+        .security-questions h4 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        .qr-code-container {
+            display: none;
+            text-align: center;
+            border: 1.5px solid #e1e5e9;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+        }
+
+        .qr-code-container.show {
+            display: block;
+        }
+
+        .qr-code {
+            margin: 10px auto;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            display: inline-block;
+        }
+
+        .qr-code canvas {
+            max-width: 140px !important;
+            height: auto !important;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 15px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 8px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .divider {
+            text-align: center;
+            margin: 15px 0;
+            position: relative;
+            color: #666;
+            font-size: 12px;
+        }
+
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: #e1e5e9;
+        }
+
+        .divider span {
+            background: white;
+            padding: 0 10px;
+            position: relative;
+        }
+
+        .password-reset-form, .update-profile-form {
+            display: none;
+            border: 1.5px solid #e1e5e9;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            background: #f8f9fa;
+        }
+
+        .password-reset-form.show, .update-profile-form.show {
+            display: block;
+        }
+
+        .password-reset-form h4, .update-profile-form h4 {
+            margin-bottom: 12px;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .dashboard {
+            display: none;
+            text-align: center;
+        }
+
+        .dashboard.show {
+            display: block;
+        }
+
+        .user-info {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .user-info h3 {
+            color: #333;
+            margin-bottom: 12px;
+            font-size: 16px;
+        }
+
+        .user-detail {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 6px 0;
+            border-bottom: 1px solid #e1e5e9;
+            font-size: 12px;
+        }
+
+        .user-detail:last-child {
+            border-bottom: none;
+        }
+
+        .user-detail strong {
+            color: #666;
+        }
+
+        .status-active { color: #28a745; font-weight: bold; }
+        .status-inactive { color: #ffc107; font-weight: bold; }
+        .status-locked { color: #dc3545; font-weight: bold; }
+
+        /* Admin Popup Styles */
+        .admin-popup {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .admin-popup.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeInPopup 0.3s ease;
+        }
+
+        @keyframes fadeInPopup {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .admin-popup-content {
+            background: white;
+            border-radius: 16px;
+            padding: 35px;
+            max-width: 420px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.4);
+            position: relative;
+            animation: slideInPopup 0.3s ease;
+        }
+
+        @keyframes slideInPopup {
+            from { transform: translateY(-20px) scale(0.95); opacity: 0; }
+            to { transform: translateY(0) scale(1); opacity: 1; }
+        }
+
+        .admin-popup-content h3 {
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .admin-popup-content p {
+            color: #666;
+            margin-bottom: 25px;
+            line-height: 1.5;
+            font-size: 16px;
+        }
+
+        .admin-popup-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .admin-popup-buttons .btn {
+            min-width: 150px;
+            padding: 14px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: 10px;
+            margin-bottom: 0;
+        }
+
+        .admin-popup-buttons .btn-admin {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .admin-popup-buttons .btn-admin:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .admin-popup-buttons .btn-landing {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+        }
+
+        .admin-popup-buttons .btn-landing:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
+        }
+
+        .admin-popup-buttons .btn-token {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            box-shadow: 0 4px 15px rgba(23, 162, 184, 0.3);
+        }
+
+        .admin-popup-buttons .btn-token:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(23, 162, 184, 0.4);
+        }
+
+        /* Ultra-compact mobile styles */
+        @media (max-width: 400px) {
+            body {
+                padding: 4px;
+                font-size: 13px;
+            }
+
+            .container {
+                padding: 15px;
+                border-radius: 12px;
+                max-width: 100%;
+            }
+
+            .logo h1 {
+                font-size: 18px;
+            }
+
+            .logo p {
+                font-size: 10px;
+            }
+
+            .form-group {
+                margin-bottom: 12px;
+            }
+
+            input, select {
+                padding: 8px 10px;
+                font-size: 14px;
+            }
+
+            .btn {
+                padding: 9px;
+                font-size: 13px;
+            }
+
+            .tab {
+                padding: 8px 6px;
+                font-size: 11px;
+            }
+
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+
+            .user-detail {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 2px;
+            }
+
+            .qr-code canvas {
+                max-width: 120px !important;
+            }
+
+            .admin-popup-content {
+                padding: 25px 20px;
+                margin: 20px;
+            }
+
+            .admin-popup-content h3 {
+                font-size: 20px;
+            }
+
+            .admin-popup-buttons {
+                flex-direction: column;
+            }
+            
+            .admin-popup-buttons .btn {
+                min-width: 100%;
+            }
+        }
+
+        /* Landscape mode optimization */
+        @media (max-height: 500px) and (orientation: landscape) {
+            body {
+                padding: 2px;
+            }
+
+            .container {
+                max-height: 98vh;
+                padding: 10px;
+            }
+
+            .logo {
+                margin-bottom: 8px;
+            }
+
+            .logo h1 {
+                font-size: 16px;
+            }
+
+            .tabs {
+                margin-bottom: 8px;
+            }
+
+            .form-group {
+                margin-bottom: 8px;
+            }
+
+            .btn {
+                padding: 7px;
+                margin-bottom: 6px;
+            }
+
+            .security-questions, .qr-code-container {
+                padding: 8px;
+            }
+        }
+
+        /* Very small screens */
+        @media (max-width: 320px) {
+            .container {
+                padding: 12px 8px;
+            }
+
+            .logo h1 {
+                font-size: 16px;
+            }
+
+            .tab {
+                padding: 6px 4px;
+                font-size: 10px;
+            }
+
+            input, select {
+                padding: 7px 8px;
+            }
+
+            .button-row .btn {
+                font-size: 10px;
+                padding: 6px;
+            }
+        }
+
+        /* Touch device optimizations */
+        @media (hover: none) and (pointer: coarse) {
+            .btn:hover {
+                transform: none;
+                box-shadow: none;
+            }
+
+            .password-toggle {
+                padding: 8px;
+                margin-right: -8px;
+                font-size: 18px;
+            }
+
+            input, select {
+                font-size: 16px; /* Prevents zoom on iOS */
+            }
+        }
+
+        /* Reduce animations on slower devices */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* Hide scrollbars but keep functionality */
+        .container::-webkit-scrollbar {
+            width: 2px;
+        }
+
+        .container::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.3);
+            border-radius: 1px;
+        }
+
+        /* Compact specific elements */
+        .security-questions h4, .qr-code-container h4 {
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .qr-code-container p {
+            font-size: 11px;
+            margin: 5px 0;
+            line-height: 1.3;
+        }
+
+        .loading p {
+            font-size: 12px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>SecureAccess</h1>
+            <p>Secure Website Authentication</p>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('login')">Existing User</div>
+            <div class="tab" onclick="switchTab('register')">Register</div>
+            <div class="tab" id="updateProfileTab" onclick="switchTab('updateProfile')" style="display: none;">Update Profile</div>
+        </div>
+
+        <div class="alert" id="alert"></div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing...</p>
+        </div>
+
+        <!-- User Role Popup -->
+        <div class="admin-popup" id="userPopup">
+            <div class="admin-popup-content">
+                <h3 id="popupTitle">Welcome!</h3>
+                <p>Where would you like to go?</p>
+                <div class="admin-popup-buttons">
+                    <button class="btn btn-landing" onclick="goToLandingPage()">Landing Page</button>
+                    <button class="btn btn-admin" id="secondButton" onclick="goToAdminPage()">Admin Page</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard (shown after login) -->
+        <div class="dashboard" id="dashboard">
+            <div class="user-info">
+                <h3>Welcome!</h3>
+                <div id="userDetails"></div>
+            </div>
+            <button class="btn btn-primary" onclick="logout()" style="background: #dc3545;">
+                Logout
+            </button>
+        </div>
+
+        <div class="form-container">
+            <!-- Login Form -->
+            <form id="loginForm" class="form active">
+                <div class="form-group">
+                    <label for="loginUsername">Username/Email</label>
+                    <input type="text" id="loginUsername" name="username" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <div class="password-container">
+                        <input type="password" id="loginPassword" name="password" required>
+                        <span class="password-toggle" onclick="togglePassword('loginPassword')">👁️</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="twoFactorCode">2FA Code (if enabled)</label>
+                    <input type="text" id="twoFactorCode" name="twoFactorCode" placeholder="6-digit code">
+                </div>
+
+                <div class="button-row">
+                    <button type="submit" class="btn btn-primary">Login</button>
+                </div>
+
+                <div class="divider">
+                    <span>or</span>
+                </div>
+
+                <button type="button" class="btn btn-secondary" onclick="showPasswordReset()">
+                    Forgot Password?
+                </button>
+            </form>
+
+            <!-- Password Reset Form -->
+            <div class="password-reset-form" id="passwordResetForm">
+                <h4>Password Reset</h4>
+                <form id="resetRequestForm">
+                    <div class="form-group">
+                        <label for="resetEmail">Email</label>
+                        <input type="email" id="resetEmail" name="email" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Get Questions</button>
+                    <button type="button" class="btn btn-secondary" onclick="hidePasswordReset()">
+                        Back
+                    </button>
+                </form>
+
+                <form id="resetPasswordForm" style="display: none;">
+                    <div id="resetQuestions"></div>
+                    <div class="form-group">
+                        <label for="newPassword">New Password</label>
+                        <div class="password-container">
+                            <input type="password" id="newPassword" name="newPassword" required minlength="8">
+                            <span class="password-toggle" onclick="togglePassword('newPassword')">👁️</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirmNewPassword">Confirm Password</label>
+                        <div class="password-container">
+                            <input type="password" id="confirmNewPassword" name="confirmNewPassword" required>
+                            <span class="password-toggle" onclick="togglePassword('confirmNewPassword')">👁️</span>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Reset</button>
+                </form>
+            </div>
+
+            <!-- Update Profile Form -->
+            <form id="updateProfileForm" class="form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="updateFirstName">First Name</label>
+                        <input type="text" id="updateFirstName" name="firstName">
+                    </div>
+                    <div class="form-group">
+                        <label for="updateLastName">Last Name</label>
+                        <input type="text" id="updateLastName" name="lastName">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="updateUsername">Username</label>
+                    <input type="text" id="updateUsername" name="username">
+                </div>
+
+                <div class="form-group">
+                    <label for="updateEmail">Email</label>
+                    <input type="email" id="updateEmail" name="email">
+                </div>
+
+                <div class="form-group">
+                    <label for="updatePassword">Password</label>
+                    <div class="password-container">
+                        <input type="password" id="updatePassword" name="password" placeholder="Leave empty to keep current" minlength="8">
+                        <span class="password-toggle" onclick="togglePassword('updatePassword')">👁️</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="updateConfirmPassword">Confirm Password</label>
+                    <div class="password-container">
+                        <input type="password" id="updateConfirmPassword" name="confirmPassword" placeholder="Leave empty to keep current">
+                        <span class="password-toggle" onclick="togglePassword('updateConfirmPassword')">👁️</span>
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="updateSecurityQuestions" onchange="toggleUpdateSecurityQuestions()">
+                    <label for="updateSecurityQuestions">Add Security Questions</label>
+                </div>
+
+                <div class="security-questions" id="updateSecurityQuestionsContainer">
+                    <h4>Security Questions</h4>
+                    <div class="form-group">
+                        <label for="updateSecurityQuestion1">Question 1</label>
+                        <input type="text" id="updateSecurityQuestion1" name="securityQuestion1" placeholder="Enter your security question">
+                    </div>
+                    <div class="form-group">
+                        <label for="updateSecurityAnswer1">Answer 1</label>
+                        <input type="text" id="updateSecurityAnswer1" name="securityAnswer1">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="updateSecurityQuestion2">Question 2</label>
+                        <input type="text" id="updateSecurityQuestion2" name="securityQuestion2" placeholder="Enter your security question">
+                    </div>
+                    <div class="form-group">
+                        <label for="updateSecurityAnswer2">Answer 2</label>
+                        <input type="text" id="updateSecurityAnswer2" name="securityAnswer2">
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="updateTwoFactor" onchange="toggleUpdateTwoFactor()">
+                    <label for="updateTwoFactor">Enable 2FA</label>
+                </div>
+
+
+
+                <div class="qr-code-container" id="updateQrCodeContainer">
+                    <h4>2FA Setup</h4>
+                    <p>Scan with authenticator:</p>
+                    <div class="qr-code" id="updateQrCode"></div>
+                    <p><strong>Secret:</strong> <span id="updateSecretKey"></span></p>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Submit</button>
+            </form>
+
+            <!-- Registration Form -->
+            <form id="registerForm" class="form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="firstName">First Name</label>
+                        <input type="text" id="firstName" name="firstName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="lastName">Last Name</label>
+                        <input type="text" id="lastName" name="lastName" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="regUsername">Username</label>
+                    <input type="text" id="regUsername" name="username" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="regPassword">Password</label>
+                    <div class="password-container">
+                        <input type="password" id="regPassword" name="password" required minlength="8">
+                        <span class="password-toggle" onclick="togglePassword('regPassword')">👁️</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm Password</label>
+                    <div class="password-container">
+                        <input type="password" id="confirmPassword" name="confirmPassword" required>
+                        <span class="password-toggle" onclick="togglePassword('confirmPassword')">👁️</span>
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="enableSecurityQuestions" onchange="toggleSecurityQuestions()">
+                    <label for="enableSecurityQuestions">Add Security Questions</label>
+                </div>
+
+                <div class="security-questions" id="securityQuestions">
+                    <h4>Security Questions</h4>
+                    <div class="form-group">
+                        <label for="securityQuestion1">Question 1</label>
+                        <input type="text" id="securityQuestion1" name="securityQuestion1" placeholder="Enter your security question">
+                    </div>
+                    <div class="form-group">
+                        <label for="securityAnswer1">Answer 1</label>
+                        <input type="text" id="securityAnswer1" name="securityAnswer1">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="securityQuestion2">Question 2</label>
+                        <input type="text" id="securityQuestion2" name="securityQuestion2" placeholder="Enter your security question">
+                    </div>
+                    <div class="form-group">
+                        <label for="securityAnswer2">Answer 2</label>
+                        <input type="text" id="securityAnswer2" name="securityAnswer2">
+                    </div>
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="enableTwoFactor" onchange="toggleTwoFactor()">
+                    <label for="enableTwoFactor">Enable 2FA</label>
+                </div>
+
+
+
+                <div class="qr-code-container" id="qrCodeContainer">
+                    <h4>2FA Setup</h4>
+                    <p>Scan with authenticator:</p>
+                    <div class="qr-code" id="qrCode"></div>
+                    <p><strong>Secret:</strong> <span id="secretKey"></span></p>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Create Account</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js"></script>
+    <script>
+        // Configuration - Backend server
+        const API_BASE_URL = 'http://localhost:3000/api';
+
+        // Global variable for landing page
+        const LandingPage = 'http://www.iodd.com';
+        // const LandingPage = 'http://127.0.0.1:5501/client1/c11_iodd-app/iodd-New-02/member-profile.html'
+        
+        //Global variables for attempets and failed page to be redirected to
+        const FailedAttempts = 3
+        const FailedPage = 'http://www.yahoo.com'
+        // const FailedPage = 'http://iodd.com/members/members.html'
+
+        // State management
+        let currentUser = null;
+        let authToken = null;
+        let registrationData = null;
+        let failedLoginAttempts = 0;
+
+        // User popup functions
+        function showUserPopup() {
+            const popup = document.getElementById('userPopup');
+            const title = document.getElementById('popupTitle');
+            const secondButton = document.getElementById('secondButton');
+            
+            if (currentUser.role === 'Admin') {
+                title.textContent = 'Welcome, Admin!';
+                secondButton.textContent = 'Admin Page';
+                secondButton.onclick = goToAdminPage;
+                secondButton.className = 'btn btn-admin';
+            } else {
+                title.textContent = 'Welcome!';
+                secondButton.textContent = 'Update Your Profile';
+                secondButton.onclick = goToProfilePage;
+                secondButton.className = 'btn btn-admin';
+            }
+            
+            popup.classList.add('show');
+        }
+
+        function hideUserPopup() {
+            document.getElementById('userPopup').classList.remove('show');
+        }
+
+        // Go to Landing Page
+        function goToLandingPage() {
+            hideUserPopup();
+            
+            if (currentUser) {
+                const params = new URLSearchParams({
+                    user_id: currentUser.user_id || currentUser.userId,
+                    username: currentUser.username,
+                    email: currentUser.email,
+                    role: currentUser.role,
+                    login_status: 'success'
+                });
+                window.location.href = `${LandingPage}?${params.toString()}`;
+            } else {
+                window.location.href = LandingPage;
+            }
+        }
+
+        // Go to Admin Page
+        function goToAdminPage() {
+            hideUserPopup();
+            
+            if (currentUser) {
+                const params = new URLSearchParams({
+                    user_id: currentUser.user_id || currentUser.userId,
+                    username: currentUser.username,
+                    email: currentUser.email,
+                    role: currentUser.role
+                });
+                window.location.href = `admin-page.html?${params.toString()}`;
+            } else {
+                window.location.href = 'admin-page.html';
+            }
+        }
+
+        // Go to Profile Page (Non-admin users)
+        function goToProfilePage() {
+            hideUserPopup();
+            window.location.href = 'profile-page.html';
+        }
+
+        // Tab switching
+        function switchTab(tab) {
+            // Update tab appearance
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if (tab === 'login') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
+            } else if (tab === 'register') {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+            } else if (tab === 'updateProfile') {
+                document.querySelector('.tab:nth-child(3)').classList.add('active');
+            }
+
+            // Update form visibility
+            document.querySelectorAll('.form').forEach(f => f.classList.remove('active'));
+            if (tab === 'login') {
+                document.getElementById('loginForm').classList.add('active');
+            } else if (tab === 'register') {
+                document.getElementById('registerForm').classList.add('active');
+            } else if (tab === 'updateProfile') {
+                document.getElementById('updateProfileForm').classList.add('active');
+            }
+
+            // Hide dashboard, admin popup, and password reset
+            document.getElementById('dashboard').classList.remove('show');
+            document.getElementById('userPopup').classList.remove('show');
+            document.getElementById('passwordResetForm').classList.remove('show');
+            document.getElementById('updateProfileForm').classList.remove('show');
+
+            // Clear alerts and reset forms
+            hideAlert();
+            if (tab === 'login') {
+                document.getElementById('loginForm').reset();
+            } else if (tab === 'register') {
+                document.getElementById('registerForm').reset();
+                document.getElementById('securityQuestions').classList.remove('show');
+                document.getElementById('qrCodeContainer').classList.remove('show');
+            } else if (tab === 'updateProfile') {
+                // Don't reset update profile form to preserve loaded data
+                document.getElementById('updateSecurityQuestionsContainer').classList.remove('show');
+                document.getElementById('updateQrCodeContainer').classList.remove('show');
+            }
+        }
+
+        // Password visibility toggle
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            const toggle = input.nextElementSibling;
+
+            if (input.type === 'password') {
+                input.type = 'text';
+                toggle.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                toggle.textContent = '👁️';
+            }
+        }
+
+        // Security questions toggle
+        function toggleSecurityQuestions() {
+            const checkbox = document.getElementById('enableSecurityQuestions');
+            const container = document.getElementById('securityQuestions');
+
+            if (checkbox.checked) {
+                container.classList.add('show');
+            } else {
+                container.classList.remove('show');
+                // Clear values
+                document.getElementById('securityQuestion1').value = '';
+                document.getElementById('securityAnswer1').value = '';
+                document.getElementById('securityQuestion2').value = '';
+                document.getElementById('securityAnswer2').value = '';
+            }
+        }
+
+        // Update profile security questions toggle
+        function toggleUpdateSecurityQuestions() {
+            const checkbox = document.getElementById('updateSecurityQuestions');
+            const container = document.getElementById('updateSecurityQuestionsContainer');
+
+            if (checkbox.checked) {
+                container.classList.add('show');
+            } else {
+                container.classList.remove('show');
+            }
+        }
+
+        // Two-factor authentication toggle
+        function toggleTwoFactor() {
+            const checkbox = document.getElementById('enableTwoFactor');
+            const container = document.getElementById('qrCodeContainer');
+
+            if (checkbox.checked) {
+                // Generate preview QR code
+                generatePreviewQR();
+                container.classList.add('show');
+            } else {
+                container.classList.remove('show');
+            }
+        }
+
+        // Update profile 2FA toggle
+        function toggleUpdateTwoFactor() {
+            const checkbox = document.getElementById('updateTwoFactor');
+            const container = document.getElementById('updateQrCodeContainer');
+
+            if (checkbox.checked) {
+                generateUpdatePreviewQR();
+                container.classList.add('show');
+            } else {
+                container.classList.remove('show');
+            }
+        }
+
+        // Generate preview QR code for 2FA setup
+        function generatePreviewQR() {
+            const username = document.getElementById('regUsername').value || 'user';
+            const secret = generateRandomSecret();
+            const qrUrl = `otpauth://totp/${encodeURIComponent(username)}?secret=${secret}&issuer=SecureAccess`;
+
+            document.getElementById('secretKey').textContent = secret;
+
+            // Generate QR code
+            const qrCodeElement = document.getElementById('qrCode');
+            qrCodeElement.innerHTML = ''; // Clear previous QR code
+
+            new QRious({
+                element: qrCodeElement,
+                value: qrUrl,
+                size: 140,
+                background: 'white',
+                foreground: 'black'
+            });
+        }
+
+        // Generate preview QR code for update profile
+        function generateUpdatePreviewQR() {
+            const username = document.getElementById('updateUsername').value || 'user';
+            const secret = generateRandomSecret();
+            const qrUrl = `otpauth://totp/${encodeURIComponent(username)}?secret=${secret}&issuer=SecureAccess`;
+
+            document.getElementById('updateSecretKey').textContent = secret;
+
+            // Generate QR code
+            const qrCodeElement = document.getElementById('updateQrCode');
+            qrCodeElement.innerHTML = ''; // Clear previous QR code
+
+            new QRious({
+                element: qrCodeElement,
+                value: qrUrl,
+                size: 140,
+                background: 'white',
+                foreground: 'black'
+            });
+        }
+
+        // Generate random secret for preview (will be replaced by server response)
+        function generateRandomSecret() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+            let result = '';
+            for (let i = 0; i < 32; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        // Alert functions
+        function showAlert(message, type = 'error') {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert ${type} show`;
+
+            // Auto-hide after 5 seconds for success messages
+            if (type === 'success') {
+                setTimeout(hideAlert, 5000);
+            }
+        }
+
+        function hideAlert() {
+            const alert = document.getElementById('alert');
+            alert.classList.remove('show');
+        }
+
+        // Loading state
+        function showLoading() {
+            document.getElementById('loading').classList.add('show');
+            document.querySelectorAll('.btn').forEach(btn => btn.disabled = true);
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('show');
+            document.querySelectorAll('.btn').forEach(btn => btn.disabled = false);
+        }
+
+        // API calls with JWT authentication
+        async function apiCall(endpoint, method = 'GET', data = null, requiresAuth = false) {
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include' // Include cookies in requests
+            };
+
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            // Debug logging
+            console.log('Making API call:', {
+                endpoint,
+                method,
+                requiresAuth,
+                hasAuthToken: !!authToken,
+                headers: options.headers
+            });
+
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+
+                // Handle different types of server errors
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        const errorData = await response.json().catch(() => ({}));
+                        
+                        if (errorData.code === 'TOKEN_EXPIRED') {
+                            clearToken();
+                            throw new Error('Your session has expired. Please login again.');
+                        } else if (errorData.code === 'TOKEN_INVALID') {
+                            clearToken();
+                            throw new Error('Invalid authentication. Please login again.');
+                        } else {
+                            throw new Error('Unauthorized. Please check your credentials.');
+                        }
+                    } else if (response.status === 403) {
+                        throw new Error('Access forbidden. Insufficient privileges.');
+                    } else if (response.status === 404) {
+                        throw new Error(`Server endpoint not found: ${endpoint}. Make sure your backend server is running and has this route.`);
+                    } else if (response.status === 500) {
+                        throw new Error('Internal server error. Check your backend server logs.');
+                    }
+                }
+
+                const result = await response.json();
+                return result;
+
+            } catch (error) {
+                // Handle network errors (server not running, etc.)
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    throw new Error('Cannot connect to server. Make sure your backend is running on http://localhost:3000');
+                }
+
+                console.error('API call failed:', error);
+                throw error;
+            }
+        }
+
+        // Token management - HTTP-only cookies
+        function clearToken() {
+            authToken = null;
+            currentUser = null;
+            // Token is cleared server-side via logout endpoint
+        }
+
+        // Show dashboard with user info and enable Update Profile tab
+        function showDashboard(userData) {
+            const userDetails = document.getElementById('userDetails');
+            userDetails.innerHTML = `
+                <div class="user-detail">
+                    <strong>Name:</strong>
+                    <span>${userData.firstName || userData.first_name || ''} ${userData.lastName || userData.last_name || ''}</span>
+                </div>
+                <div class="user-detail">
+                    <strong>Username:</strong>
+                    <span>${userData.username}</span>
+                </div>
+                <div class="user-detail">
+                    <strong>Email:</strong>
+                    <span>${userData.email}</span>
+                </div>
+                <div class="user-detail">
+                    <strong>Status:</strong>
+                    <span class="status-${userData.accountStatus || userData.account_status || 'active'}">${(userData.accountStatus || userData.account_status || 'active').toUpperCase()}</span>
+                </div>
+                <div class="user-detail">
+                    <strong>2FA:</strong>
+                    <span>${userData.twoFactorEnabled || userData.two_factor_enabled ? 'Yes' : 'No'}</span>
+                </div>
+                <div class="user-detail">
+                    <strong>Last Login:</strong>
+                    <span>${userData.lastLogin || userData.last_login_timestamp ? new Date(userData.lastLogin || userData.last_login_timestamp).toLocaleString() : 'Never'}</span>
+                </div>
+            `;
+
+            // Show Update Profile tab and populate with user data
+            document.getElementById('updateProfileTab').style.display = 'block';
+            populateUpdateProfileForm(userData);
+
+            // Hide forms and show dashboard
+            document.querySelectorAll('.form').forEach(f => f.classList.remove('active'));
+            document.getElementById('dashboard').classList.add('show');
+            document.querySelector('.tabs').style.display = 'flex';
+        }
+
+        // Populate Update Profile form with user data
+        function populateUpdateProfileForm(userData = {}) {
+            // Populate form fields with actual data or set placeholders
+            document.getElementById('updateFirstName').value = userData.firstName || '';
+            document.getElementById('updateLastName').value = userData.lastName || '';
+            document.getElementById('updateUsername').value = userData.username || '';
+            document.getElementById('updateEmail').value = userData.email || '';
+            
+            // Set 2FA checkbox if enabled
+            if (userData.twoFactorEnabled) {
+                document.getElementById('updateTwoFactor').checked = true;
+            }
+        }
+
+        // Password reset functions
+        function showPasswordReset() {
+            document.getElementById('passwordResetForm').classList.add('show');
+            document.getElementById('loginForm').classList.remove('active');
+        }
+
+        function hidePasswordReset() {
+            document.getElementById('passwordResetForm').classList.remove('show');
+            document.getElementById('loginForm').classList.add('active');
+            document.getElementById('resetRequestForm').style.display = 'block';
+            document.getElementById('resetPasswordForm').style.display = 'none';
+        }
+
+        // Logout function
+        async function logout() {
+            try {
+                if (authToken) {
+                    await apiCall('/auth/logout', 'POST', null, true);
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+            } finally {
+                clearToken();
+                document.getElementById('dashboard').classList.remove('show');
+                document.getElementById('userPopup').classList.remove('show');
+                document.getElementById('updateProfileTab').style.display = 'none';
+                document.querySelector('.tabs').style.display = 'flex';
+                switchTab('login');
+                showAlert('Logged out successfully', 'success');
+            }
+        }
+
+        // Login form handler - UPDATED WITH ADMIN POPUP LOGIC
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideAlert();
+            showLoading();
+
+            try {
+                const formData = new FormData(e.target);
+                const loginData = {
+                    username: formData.get('username').trim(),
+                    password: formData.get('password')
+                };
+
+                const twoFactorCode = formData.get('twoFactorCode');
+                if (twoFactorCode && twoFactorCode.trim()) {
+                    loginData.twoFactorCode = twoFactorCode.trim();
+                }
+
+                // Basic validation
+                if (!loginData.username || !loginData.password) {
+                    throw new Error('Please fill in all required fields');
+                }
+
+                // Make login API call
+                const result = await apiCall('/auth/login', 'POST', loginData);
+
+                if (result.success) {
+                    // Reset failed attempts on successful login
+                    failedLoginAttempts = 0;
+                    
+                    // Store token in localStorage as fallback for HTTP-only cookie issues
+                    if (result.data.token) {
+                        localStorage.setItem('authToken', result.data.token);
+                        console.log('🔑 Token stored in localStorage as fallback');
+                    }
+
+                    // Store current user data
+                    currentUser = {
+                        user_id: result.data.user.user_id,
+                        userId: result.data.user.user_id, // For compatibility
+                        username: result.data.user.username,
+                        email: result.data.user.email,
+                        role: result.data.user.role,
+                        firstName: result.data.user.first_name,
+                        lastName: result.data.user.last_name,
+                        accountStatus: result.data.user.account_status,
+                        twoFactorEnabled: result.data.user.two_factor_enabled
+                    };
+
+                    showAlert('Login successful!', 'success');
+
+                    // Show popup for all users with role-specific options
+                    setTimeout(() => {
+                        hideLoading();
+                        showUserPopup();
+                    }, 1000);
+                }
+
+            } catch (error) {
+                failedLoginAttempts++;
+                
+                if (failedLoginAttempts >= FailedAttempts) {
+                    showAlert('Too many failed attempts. Redirecting...', 'error');
+                    setTimeout(() => {
+                        window.location.href = FailedPage;
+                    }, 2000);
+                    return;
+                }
+                
+                if (error.message.includes('Two-factor authentication code required')) {
+                    showAlert('Please enter your 2FA code', 'error');
+                    document.getElementById('twoFactorCode').focus();
+                } else {
+                    showAlert(error.message, 'error');
+                }
+            } finally {
+                if (!document.getElementById('userPopup').classList.contains('show')) {
+                    hideLoading();
+                }
+            }
+        });
+
+        // Registration form handler
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideAlert();
+            showLoading();
+
+            try {
+                const formData = new FormData(e.target);
+                const registrationData = {
+                    firstName: formData.get('firstName').trim(),
+                    lastName: formData.get('lastName').trim(),
+                    username: formData.get('username').trim(),
+                    email: formData.get('email').trim(),
+                    password: formData.get('password')
+                };
+
+                const confirmPassword = formData.get('confirmPassword');
+
+                // Basic validation
+                if (!registrationData.firstName || !registrationData.lastName || 
+                    !registrationData.username || !registrationData.email || !registrationData.password) {
+                    throw new Error('Please fill in all required fields');
+                }
+
+                if (registrationData.password !== confirmPassword) {
+                    throw new Error('Passwords do not match');
+                }
+
+                if (registrationData.password.length < 8) {
+                    throw new Error('Password must be at least 8 characters long');
+                }
+
+                // Add security questions if enabled
+                if (document.getElementById('enableSecurityQuestions').checked) {
+                    const q1 = document.getElementById('securityQuestion1').value.trim();
+                    const a1 = document.getElementById('securityAnswer1').value.trim();
+                    const q2 = document.getElementById('securityQuestion2').value.trim();
+                    const a2 = document.getElementById('securityAnswer2').value.trim();
+
+                    if (!q1 || !a1 || !q2 || !a2) {
+                        throw new Error('Please fill in all security questions and answers');
+                    }
+
+                    registrationData.securityQuestions = [
+                        { question: q1, answer: a1 },
+                        { question: q2, answer: a2 }
+                    ];
+                }
+
+                // Add 2FA if enabled
+                if (document.getElementById('enableTwoFactor').checked) {
+                    registrationData.twoFactorEnabled = true;
+                }
+
+                // Make registration API call
+                const result = await apiCall('/auth/register', 'POST', registrationData);
+
+                if (result.success) {
+                    showAlert('Registration successful! You can now login.', 'success');
+                    
+                    // Reset form and switch to login tab
+                    document.getElementById('registerForm').reset();
+                    document.getElementById('securityQuestions').classList.remove('show');
+                    document.getElementById('qrCodeContainer').classList.remove('show');
+                    
+                    setTimeout(() => {
+                        switchTab('login');
+                    }, 2000);
+                } else {
+                    throw new Error(result.message || 'Registration failed');
+                }
+
+            } catch (error) {
+                showAlert(error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Password reset request handler
+        document.getElementById('resetRequestForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideAlert();
+            showLoading();
+
+            try {
+                const formData = new FormData(e.target);
+                const email = formData.get('email').trim();
+
+                if (!email) {
+                    throw new Error('Please enter your email address');
+                }
+
+                const result = await apiCall('/auth/reset-request', 'POST', { email });
+
+                if (result.success && result.data.questions) {
+                    // Show security questions
+                    const questionsContainer = document.getElementById('resetQuestions');
+                    questionsContainer.innerHTML = result.data.questions.map((q, index) => `
+                        <div class="form-group">
+                            <label>${q}</label>
+                            <input type="text" name="answer${index + 1}" required>
+                        </div>
+                    `).join('');
+
+                    document.getElementById('resetRequestForm').style.display = 'none';
+                    document.getElementById('resetPasswordForm').style.display = 'block';
+                } else {
+                    throw new Error(result.message || 'Failed to get security questions');
+                }
+
+            } catch (error) {
+                showAlert(error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Password reset form handler
+        document.getElementById('resetPasswordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideAlert();
+            showLoading();
+
+            try {
+                const formData = new FormData(e.target);
+                const newPassword = formData.get('newPassword');
+                const confirmPassword = formData.get('confirmNewPassword');
+
+                if (newPassword !== confirmPassword) {
+                    throw new Error('Passwords do not match');
+                }
+
+                if (newPassword.length < 8) {
+                    throw new Error('Password must be at least 8 characters long');
+                }
+
+                const resetData = {
+                    email: document.getElementById('resetEmail').value,
+                    newPassword: newPassword,
+                    answers: [
+                        formData.get('answer1'),
+                        formData.get('answer2')
+                    ]
+                };
+
+                const result = await apiCall('/auth/reset-password', 'POST', resetData);
+
+                if (result.success) {
+                    showAlert('Password reset successful! You can now login.', 'success');
+                    hidePasswordReset();
+                    switchTab('login');
+                } else {
+                    throw new Error(result.message || 'Password reset failed');
+                }
+
+            } catch (error) {
+                showAlert(error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Update profile form handler
+        document.getElementById('updateProfileForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideAlert();
+            showLoading();
+
+            try {
+                const formData = new FormData(e.target);
+                const updateData = {
+                    firstName: formData.get('firstName').trim(),
+                    lastName: formData.get('lastName').trim(),
+                    username: formData.get('username').trim(),
+                    email: formData.get('email').trim()
+                };
+
+                const password = formData.get('password');
+                const confirmPassword = formData.get('confirmPassword');
+
+                // Only include password if provided
+                if (password && password.trim()) {
+                    if (password !== confirmPassword) {
+                        throw new Error('Passwords do not match');
+                    }
+                    if (password.length < 8) {
+                        throw new Error('Password must be at least 8 characters long');
+                    }
+                    updateData.password = password;
+                }
+
+                // Add security questions if enabled
+                if (document.getElementById('updateSecurityQuestions').checked) {
+                    const q1 = document.getElementById('updateSecurityQuestion1').value.trim();
+                    const a1 = document.getElementById('updateSecurityAnswer1').value.trim();
+                    const q2 = document.getElementById('updateSecurityQuestion2').value.trim();
+                    const a2 = document.getElementById('updateSecurityAnswer2').value.trim();
+
+                    if (!q1 || !a1 || !q2 || !a2) {
+                        throw new Error('Please fill in all security questions and answers');
+                    }
+
+                    updateData.securityQuestions = [
+                        { question: q1, answer: a1 },
+                        { question: q2, answer: a2 }
+                    ];
+                }
+
+                // Add 2FA if enabled
+                if (document.getElementById('updateTwoFactor').checked) {
+                    updateData.twoFactorEnabled = true;
+                }
+
+                // Make update API call
+                const result = await apiCall('/users/me', 'PUT', updateData, true);
+
+                if (result.success) {
+                    showAlert('Profile updated successfully!', 'success');
+                    
+                    // Update current user data
+                    if (currentUser) {
+                        currentUser.firstName = updateData.firstName;
+                        currentUser.lastName = updateData.lastName;
+                        currentUser.username = updateData.username;
+                        currentUser.email = updateData.email;
+                    }
+                } else {
+                    throw new Error(result.message || 'Profile update failed');
+                }
+
+            } catch (error) {
+                showAlert(error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        });
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('SecureAccess Client initialized');
+
+            // Check if server is running
+            fetch(`${API_BASE_URL.replace('/api', '')}/health`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'OK') {
+                        console.log('✅ Server connection successful');
+                    }
+                })
+                .catch(error => {
+                    console.warn('⚠️ Server not reachable. Make sure your API server is running on http://localhost:3000');
+                });
+        });
+
+
+    </script>
+</body>
+</html>

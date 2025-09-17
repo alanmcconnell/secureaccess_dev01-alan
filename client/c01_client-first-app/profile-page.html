@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureAccess - My Profile</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 15px;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.2s ease;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .password-container {
+            position: relative;
+        }
+
+        .password-toggle {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: #666;
+            font-size: 16px;
+            padding: 4px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-1px);
+        }
+
+        .alert {
+            padding: 12px 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e1e5e9;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            .container {
+                margin: 0;
+                border-radius: 12px;
+            }
+            
+            .header {
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 24px;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .form-row {
+                flex-direction: column;
+                gap: 0;
+            }
+            
+            .actions {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .actions > div {
+                width: 100%;
+            }
+            
+            .btn {
+                width: 100%;
+                margin-right: 0;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            body {
+                padding: 5px;
+            }
+            
+            .header {
+                padding: 15px;
+            }
+            
+            .header h1 {
+                font-size: 20px;
+            }
+            
+            .content {
+                padding: 15px;
+            }
+            
+            input, select {
+                padding: 10px 12px;
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>My Profile</h1>
+            <p>Update your personal information</p>
+        </div>
+
+        <div class="content">
+            <div class="alert" id="alert"></div>
+            
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Processing...</p>
+            </div>
+
+            <form id="profileForm">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="firstName">First Name</label>
+                        <input type="text" id="firstName" name="firstName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="lastName">Last Name</label>
+                        <input type="text" id="lastName" name="lastName" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">New Password (leave empty to keep current)</label>
+                    <div class="password-container">
+                        <input type="password" id="password" name="password" placeholder="Enter new password" minlength="8">
+                        <span class="password-toggle" onclick="togglePassword('password')">👁️</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPassword">Confirm New Password</label>
+                    <div class="password-container">
+                        <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm new password">
+                        <span class="password-toggle" onclick="togglePassword('confirmPassword')">👁️</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="securityQuestion1">Security Question 1</label>
+                    <input type="text" id="securityQuestion1" name="securityQuestion1" placeholder="Enter your security question">
+                </div>
+
+                <div class="form-group">
+                    <label for="securityAnswer1">Security Answer 1</label>
+                    <input type="text" id="securityAnswer1" name="securityAnswer1" placeholder="Enter your answer">
+                </div>
+
+                <div class="form-group">
+                    <label for="securityQuestion2">Security Question 2</label>
+                    <input type="text" id="securityQuestion2" name="securityQuestion2" placeholder="Enter your security question">
+                </div>
+
+                <div class="form-group">
+                    <label for="securityAnswer2">Security Answer 2</label>
+                    <input type="text" id="securityAnswer2" name="securityAnswer2" placeholder="Enter your answer">
+                </div>
+
+                <div class="actions">
+                    <div>
+                        <button type="submit" class="btn btn-primary">Update Profile</button>
+                        <button type="button" class="btn btn-secondary" onclick="goBack()">Back to Login</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3000/api';
+        let authToken = null;
+        let currentUser = null;
+
+        // Get URL parameters
+        function getUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                auth_token: params.get('auth_token'),
+                user_id: params.get('user_id'),
+                username: params.get('username'),
+                email: params.get('email'),
+                role: params.get('role')
+            };
+        }
+
+        // Password visibility toggle
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            const toggle = input.nextElementSibling;
+
+            if (input.type === 'password') {
+                input.type = 'text';
+                toggle.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                toggle.textContent = '👁️';
+            }
+        }
+
+        // Alert functions
+        function showAlert(message, type = 'error') {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert ${type} show`;
+
+            if (type === 'success') {
+                setTimeout(hideAlert, 5000);
+            }
+        }
+
+        function hideAlert() {
+            document.getElementById('alert').classList.remove('show');
+        }
+
+        // Loading state
+        function showLoading() {
+            document.getElementById('loading').classList.add('show');
+            document.querySelectorAll('.btn').forEach(btn => btn.disabled = true);
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('show');
+            document.querySelectorAll('.btn').forEach(btn => btn.disabled = false);
+        }
+
+        // API call function
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            console.log(`🌐 API Call: ${method} ${API_BASE_URL}${endpoint}`);
+            console.log('🍪 Document cookies:', document.cookie);
+            
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include'
+            };
+            
+            // Add CSRF token for POST/PUT/DELETE requests
+            if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+                const csrfToken = await CSRFManager.getToken();
+                if (csrfToken) {
+                    options.headers['X-CSRF-Token'] = csrfToken;
+                }
+            }
+            
+            // Fallback: Add Authorization header if token exists in localStorage
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                options.headers.Authorization = `Bearer ${token}`;
+                console.log('🔑 Using token from localStorage as fallback');
+            }
+
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+                console.log(`📡 Response status: ${response.status}`);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.log('❌ Error response:', errorText);
+                    
+                    if (response.status === 401) {
+                        throw new Error('Session expired. Please login again.');
+                    } else if (response.status === 403) {
+                        throw new Error('Access denied.');
+                    }
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                return await response.json();
+            } catch (error) {
+                console.error('🚨 API call error:', error);
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    throw new Error('Cannot connect to server.');
+                }
+                throw error;
+            }
+        }
+
+        // Load user profile data
+        async function loadProfile() {
+            try {
+                showLoading();
+                console.log('Loading profile for user:', currentUser.user_id);
+                console.log('Auth token:', authToken);
+                
+                // Pre-populate with URL data while loading from server
+                document.getElementById('firstName').value = '';
+                document.getElementById('lastName').value = '';
+                document.getElementById('username').value = currentUser.username || '';
+                document.getElementById('email').value = currentUser.email || '';
+                
+                const result = await apiCall('/users/me');
+                
+                if (result.success) {
+                    const user = result.data;
+                    document.getElementById('firstName').value = user.first_name || '';
+                    document.getElementById('lastName').value = user.last_name || '';
+                    document.getElementById('username').value = user.username || '';
+                    document.getElementById('email').value = user.email || '';
+                    document.getElementById('securityQuestion1').value = user.security_question_1 || '';
+                    document.getElementById('securityQuestion2').value = user.security_question_2 || '';
+                    
+                    // Set placeholder text for security answers
+                    document.getElementById('securityAnswer1').placeholder = 'Leave empty to keep current';
+                    document.getElementById('securityAnswer2').placeholder = 'Leave empty to keep current';
+                }
+            } catch (error) {
+                console.error('Profile load error:', error);
+                // If loading fails, just use the data we have from URL params
+                showAlert('Using cached profile data. Some fields may be empty.', 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Update profile
+        async function updateProfile(formData) {
+            try {
+                showLoading();
+                
+                const updateData = {
+                    first_name: formData.get('firstName'),
+                    last_name: formData.get('lastName'),
+                    username: formData.get('username'),
+                    email: formData.get('email'),
+                    security_question_1: formData.get('securityQuestion1'),
+                    security_answer_1: formData.get('securityAnswer1'),
+                    security_question_2: formData.get('securityQuestion2'),
+                    security_answer_2: formData.get('securityAnswer2')
+                };
+
+                const password = formData.get('password');
+                if (password && password.trim()) {
+                    updateData.password = password;
+                }
+
+                const result = await apiCall('/users/me', 'PUT', updateData);
+                
+                if (result.success) {
+                    showAlert('Profile updated successfully!', 'success');
+                    // Clear password fields
+                    document.getElementById('password').value = '';
+                    document.getElementById('confirmPassword').value = '';
+                }
+            } catch (error) {
+                showAlert(error.message, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Go back to login
+        function goBack() {
+            window.location.href = 'login_client.html';
+        }
+
+        // Form submission
+        document.getElementById('profileForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideAlert();
+
+            const formData = new FormData(e.target);
+            const password = formData.get('password');
+            const confirmPassword = formData.get('confirmPassword');
+
+            // Validate passwords match if provided
+            if (password && password !== confirmPassword) {
+                showAlert('Passwords do not match', 'error');
+                return;
+            }
+
+            await updateProfile(formData);
+        });
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                console.log('🔍 Profile page initializing...');
+                console.log('🍪 Checking for authentication cookie...');
+                
+                // Verify authentication with server using HTTP-only cookie
+                const result = await apiCall('/auth/verify', 'GET');
+                console.log('✅ Auth verification result:', result);
+                
+                if (result.success) {
+                    currentUser = {
+                        user_id: result.data.userId,
+                        username: result.data.username,
+                        email: result.data.email,
+                        role: result.data.role
+                    };
+                    console.log('👤 Current user set:', currentUser);
+                    loadProfile();
+                } else {
+                    throw new Error('Authentication failed');
+                }
+            } catch (error) {
+                console.error('❌ Authentication error:', error);
+                // Redirect immediately to login page
+                window.location.href = 'login_client.html';
+            }
+        });
+    </script>
+    <script src="shared-functions.js"></script>
+</body>
+</html>
