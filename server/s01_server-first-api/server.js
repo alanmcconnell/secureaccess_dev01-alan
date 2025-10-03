@@ -1,3 +1,4 @@
+require('dotenv').config({ path: __dirname + '/.env' });
 const express = require('express');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcrypt');
@@ -6,17 +7,60 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const csrf = require('csurf');
+const crypto = require('crypto');
+
+// Debug environment variables
+console.log('🔧 Environment variables loaded:');
+console.log('   PORT:', process.env.PORT);
+console.log('   DB_HOST:', process.env.DB_HOST);
+console.log('   DB_NAME:', process.env.DB_NAME);
+console.log('   JWT_SECRET:', process.env.JWT_SECRET ? '[SET]' : '[NOT SET]');
+
+// CSRF Token generation
+function generateSecureRandomToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+// Simple CSRF protection using custom header
+function csrfCrossOrigin(req, res, next) {
+    // Skip CSRF for GET requests
+    if (req.method === 'GET') {
+        return next();
+    }
+    
+    // Check for custom header (prevents simple form-based attacks)
+    const customHeader = req.headers['x-requested-with'];
+    if (!customHeader || customHeader !== 'XMLHttpRequest') {
+        console.log('❌ CSRF validation failed: Missing X-Requested-With header');
+        console.log('📋 Request headers:', req.headers);
+        return res.status(403).json({ error: 'Invalid request' });
+    }
+    
+    console.log('✅ CSRF validation passed: X-Requested-With header present');
+    next();
+}
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3005;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const HOST = NODE_ENV === 'production' ? process.env.PRODUCTION_HOST : 'localhost';
+const BASE_URL = `http${NODE_ENV === 'production' ? 's' : ''}://${HOST}:${PORT}`;
 
 // JWT Secret - In production, use environment variable
 const JWT_SECRET = process.env.JWT_SECRET || 'SecureAccess-JWT-Secret-Key-2024!@#$%';
 const JWT_EXPIRES_IN = '24h'; // Token expires in 24 hours
 
 // Middleware
+const allowedOrigins = NODE_ENV === 'production' 
+    ? [`https://${HOST}`, `https://${HOST}:${PORT}`]
+    : [
+        `http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`,
+        'http://localhost:3001', 'http://127.0.0.1:3001',
+        'http://localhost:5500', 'http://127.0.0.1:5500'
+    ];
+
 app.use(cors({
-    origin: ['http://127.0.0.1:5505', 'http://localhost:5505', 'http://localhost:8080', 'http://localhost:3000'],
+    origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Access'],
     credentials: true
@@ -25,8 +69,15 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../../client/c01_client-first-app'))); // Serve client files
 
-// CSRF Protection - only for API routes
-const csrfProtection = csrf({ cookie: { httpOnly: true, secure: false, sameSite: 'lax' } });
+// CSRF Protection - configured for cross-origin
+const csrfProtection = csrf({ 
+    cookie: { 
+        httpOnly: false,
+        secure: false, 
+        sameSite: 'lax'
+    },
+    ignoreMethods: ['GET', 'HEAD', 'OPTIONS']
+});
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -125,13 +176,13 @@ function requireAdmin(req, res, next) {
 // Combined middleware for admin operations
 const adminAccess = [verifyToken, requireAdmin];
 
-// Database configuration
+// Database configuration from .env file
 const dbConfig = {
-    host: 'localhost',
-    port: 3306,
-    user: 'nimdas',
-    password: 'FormR!1234',
-    database: 'secureaccess2',
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 3306,
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    database: process.env.DB_NAME || 'secureaccess2',
     timezone: 'Z'
 };
 
@@ -216,13 +267,9 @@ async function verifyPassword(password, hash) {
     }
 }
 
-// CSRF token endpoint (no CSRF protection needed)
-app.get('/api/csrf-token', (req, res) => {
-    // Temporarily create CSRF middleware just for token generation
-    const tempCsrf = csrf({ cookie: { httpOnly: true, secure: false, sameSite: 'lax' } });
-    tempCsrf(req, res, () => {
-        res.json({ csrfToken: req.csrfToken() });
-    });
+// CSRF token endpoint
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+    res.json({ csrfToken: req.csrfToken() });
 });
 
 // Health check endpoint (no CSRF needed)
@@ -231,6 +278,16 @@ app.get('/health', (req, res) => {
         status: 'OK', 
         timestamp: new Date().toISOString(),
         database: 'connected'
+    });
+});
+
+// Config endpoint to provide client configuration
+app.get('/config', (req, res) => {
+    res.json({
+        port: PORT,
+        host: HOST,
+        environment: NODE_ENV,
+        apiBaseUrl: `${BASE_URL}/api`
     });
 });
 
@@ -244,7 +301,7 @@ app.get('/debug/csrf', (req, res) => {
 });
 
 // JWT Token validation endpoint
-app.post('/api/auth/verify-token', csrfProtection, verifyToken, (req, res) => {
+app.post('/api/auth/verify-token', verifyToken, (req, res) => {
     res.json({
         success: true,
         message: 'Token is valid',
@@ -318,7 +375,7 @@ app.get('/api/auth/verify', (req, res) => {
 });
 
 // Auth verify endpoint POST method
-app.post('/api/auth/verify', csrfProtection, verifyToken, (req, res) => {
+app.post('/api/auth/verify', verifyToken, (req, res) => {
     res.json({
         success: true,
         message: 'Token is valid',
@@ -332,7 +389,7 @@ app.post('/api/auth/verify', csrfProtection, verifyToken, (req, res) => {
 });
 
 // Admin access verification endpoint
-app.post('/api/auth/verify-admin', csrfProtection, adminAccess, (req, res) => {
+app.post('/api/auth/verify-admin', adminAccess, (req, res) => {
     res.json({
         success: true,
         message: 'Admin access confirmed',
@@ -540,7 +597,7 @@ app.get('/api/users/:id', verifyToken, async (req, res) => {
 });
 
 // Create new user - PROTECTED WITH JWT
-app.post('/api/users', csrfProtection, adminAccess, async (req, res) => {
+app.post('/api/users', adminAccess, async (req, res) => {
     try {
         const {
             first_name,
@@ -672,7 +729,7 @@ app.post('/api/users', csrfProtection, adminAccess, async (req, res) => {
 });
 
 // Update own profile - /me endpoint
-app.put('/api/users/me', csrfProtection, verifyToken, async (req, res) => {
+app.put('/api/users/me', verifyToken, async (req, res) => {
     // Allow both Admin and User roles
     if (!req.user || !['Admin', 'User'].includes(req.user.role)) {
         return res.status(403).json({
@@ -786,7 +843,7 @@ app.put('/api/users/me', csrfProtection, verifyToken, async (req, res) => {
 });
 
 // Update user - PROTECTED WITH JWT
-app.put('/api/users/:id', csrfProtection, adminAccess, async (req, res) => {
+app.put('/api/users/:id', adminAccess, async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         
@@ -972,7 +1029,7 @@ app.put('/api/users/:id', csrfProtection, adminAccess, async (req, res) => {
 });
 
 // Delete user and related records - PROTECTED WITH JWT
-app.delete('/api/users/:id', csrfProtection, adminAccess, async (req, res) => {
+app.delete('/api/users/:id', adminAccess, async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         
@@ -1086,7 +1143,7 @@ app.get('/api/debug/user/:id/security', adminAccess, async (req, res) => {
 });
 
 // Reset password for a single user - PROTECTED WITH JWT
-app.post('/api/admin/reset-single-password', csrfProtection, adminAccess, async (req, res) => {
+app.post('/api/admin/reset-single-password', adminAccess, async (req, res) => {
     try {
         const { username, newPassword } = req.body;
         
@@ -1138,7 +1195,7 @@ app.post('/api/admin/reset-single-password', csrfProtection, adminAccess, async 
 });
 
 // Bulk fix passwords for users with NULL password_hash - PROTECTED WITH JWT
-app.post('/api/admin/fix-passwords', csrfProtection, adminAccess, async (req, res) => {
+app.post('/api/admin/fix-passwords', adminAccess, async (req, res) => {
     try {
         const { defaultPassword = 'password123' } = req.body;
         
@@ -1192,7 +1249,7 @@ app.post('/api/admin/fix-passwords', csrfProtection, adminAccess, async (req, re
 });
 
 // Registration endpoint - PUBLIC ACCESS
-app.post('/api/auth/register', csrfProtection, async (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
     try {
         const {
             firstName,
@@ -1327,7 +1384,7 @@ app.post('/api/auth/register', csrfProtection, async (req, res) => {
 });
 
 // Login endpoint - UPDATED TO GENERATE JWT TOKENS
-app.post('/api/auth/login', csrfProtection, async (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         
@@ -1436,7 +1493,7 @@ app.post('/api/auth/login', csrfProtection, async (req, res) => {
 });
 
 // Logout endpoint
-app.post('/api/auth/logout', csrfProtection, verifyToken, (req, res) => {
+app.post('/api/auth/logout', verifyToken, (req, res) => {
     // Clear the HTTP-only cookie
     res.clearCookie('authToken', {
         httpOnly: true,
@@ -1475,10 +1532,11 @@ async function startServer() {
     try {
         await initDatabase();
         
-        app.listen(PORT, () => {
-            console.log(`🚀 Server running on http://localhost:${PORT}`);
-            console.log(`📊 Admin page: http://localhost:${PORT}/admin-page.html`);
-            console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+        server = app.listen(PORT, () => {
+            console.log(`🚀 Server running on ${BASE_URL}`);
+            console.log(`📊 Admin page: ${BASE_URL}/admin-page.html`);
+            console.log(`🏥 Health check: ${BASE_URL}/health`);
+            console.log(`🌍 Environment: ${NODE_ENV}`);
             console.log(`🔐 JWT Security: ENABLED`);
         });
         
@@ -1489,14 +1547,32 @@ async function startServer() {
 }
 
 // Handle graceful shutdown
-process.on('SIGINT', async () => {
-    console.log('\n🛑 Shutting down server...');
+let server;
+
+async function gracefulShutdown(signal) {
+    console.log(`\n🛑 Received ${signal}. Shutting down server...`);
+    
+    if (server) {
+        server.close(() => {
+            console.log('✅ HTTP server closed');
+        });
+    }
+    
     if (pool) {
         await pool.end();
         console.log('✅ Database connections closed');
     }
+    
     process.exit(0);
-});
+}
+
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+// Windows specific signals
+if (process.platform === 'win32') {
+    process.on('SIGBREAK', () => gracefulShutdown('SIGBREAK'));
+}
 
 // Start the server
 startServer();

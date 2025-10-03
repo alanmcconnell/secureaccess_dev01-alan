@@ -1,0 +1,20 @@
+{
+  "name": "secureaccess",
+  "version": "1.0.0",
+  "description": "Secure access management system",
+  "main": "server/s01_server-first-api/server.js",
+  "scripts": {
+    "prestart": "cd server/s01_server-first-api && npm install",
+    "start": "cd server/s01_server-first-api && node server.js",
+    "dev": "cd server/s01_server-first-api && npm run dev",
+    "install-server": "cd server/s01_server-first-api && npm install"
+  },
+  "keywords": [
+    "security",
+    "authentication",
+    "express",
+    "mysql"
+  ],
+  "author": "",
+  "license": "MIT"
+}

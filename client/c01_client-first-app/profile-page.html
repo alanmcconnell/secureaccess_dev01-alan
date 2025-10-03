@@ -339,7 +339,7 @@
     </div>
 
     <script>
-        const API_BASE_URL = 'http://localhost:3000/api';
+        let API_BASE_URL = window.location.origin + '/api';
         let authToken = null;
         let currentUser = null;
 
@@ -408,20 +408,9 @@
                 credentials: 'include'
             };
             
-            // Add CSRF token for POST/PUT/DELETE requests
-            if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
-                const csrfToken = await CSRFManager.getToken();
-                if (csrfToken) {
-                    options.headers['X-CSRF-Token'] = csrfToken;
-                }
-            }
+            // No CSRF tokens needed with SameSite=Strict cookies
             
-            // Fallback: Add Authorization header if token exists in localStorage
-            const token = localStorage.getItem('authToken');
-            if (token) {
-                options.headers.Authorization = `Bearer ${token}`;
-                console.log('🔑 Using token from localStorage as fallback');
-            }
+            // Using only HTTP-only cookies for authentication
 
             if (data) {
                 options.body = JSON.stringify(data);
@@ -453,42 +442,7 @@
             }
         }
 
-        // Load user profile data
-        async function loadProfile() {
-            try {
-                showLoading();
-                console.log('Loading profile for user:', currentUser.user_id);
-                console.log('Auth token:', authToken);
-                
-                // Pre-populate with URL data while loading from server
-                document.getElementById('firstName').value = '';
-                document.getElementById('lastName').value = '';
-                document.getElementById('username').value = currentUser.username || '';
-                document.getElementById('email').value = currentUser.email || '';
-                
-                const result = await apiCall('/users/me');
-                
-                if (result.success) {
-                    const user = result.data;
-                    document.getElementById('firstName').value = user.first_name || '';
-                    document.getElementById('lastName').value = user.last_name || '';
-                    document.getElementById('username').value = user.username || '';
-                    document.getElementById('email').value = user.email || '';
-                    document.getElementById('securityQuestion1').value = user.security_question_1 || '';
-                    document.getElementById('securityQuestion2').value = user.security_question_2 || '';
-                    
-                    // Set placeholder text for security answers
-                    document.getElementById('securityAnswer1').placeholder = 'Leave empty to keep current';
-                    document.getElementById('securityAnswer2').placeholder = 'Leave empty to keep current';
-                }
-            } catch (error) {
-                console.error('Profile load error:', error);
-                // If loading fails, just use the data we have from URL params
-                showAlert('Using cached profile data. Some fields may be empty.', 'error');
-            } finally {
-                hideLoading();
-            }
-        }
+
 
         // Update profile
         async function updateProfile(formData) {
@@ -553,28 +507,50 @@
         document.addEventListener('DOMContentLoaded', async () => {
             try {
                 console.log('🔍 Profile page initializing...');
-                console.log('🍪 Checking for authentication cookie...');
                 
-                // Verify authentication with server using HTTP-only cookie
-                const result = await apiCall('/auth/verify', 'GET');
-                console.log('✅ Auth verification result:', result);
+                // Get dynamic configuration
+                try {
+                    const config = await ConfigManager.getConfig();
+                    API_BASE_URL = config.apiBaseUrl;
+                    console.log('Using API URL:', API_BASE_URL);
+                } catch (error) {
+                    console.warn('Could not get server config, using default');
+                }
+                
+                console.log('🍪 Loading user profile...');
+                
+                // Load profile directly - this will verify auth and get user data
+                const result = await apiCall('/users/me', 'GET');
+                console.log('✅ Profile loaded:', result);
                 
                 if (result.success) {
+                    const user = result.data;
                     currentUser = {
-                        user_id: result.data.userId,
-                        username: result.data.username,
-                        email: result.data.email,
-                        role: result.data.role
+                        user_id: user.user_id,
+                        username: user.username,
+                        email: user.email,
+                        role: user.role
                     };
-                    console.log('👤 Current user set:', currentUser);
-                    loadProfile();
+                    
+                    // Populate form immediately
+                    document.getElementById('firstName').value = user.first_name || '';
+                    document.getElementById('lastName').value = user.last_name || '';
+                    document.getElementById('username').value = user.username || '';
+                    document.getElementById('email').value = user.email || '';
+                    document.getElementById('securityQuestion1').value = user.security_question_1 || '';
+                    document.getElementById('securityQuestion2').value = user.security_question_2 || '';
+                    
+                    console.log('👤 Profile populated for user:', user.username);
                 } else {
-                    throw new Error('Authentication failed');
+                    throw new Error('Failed to load profile');
                 }
             } catch (error) {
                 console.error('❌ Authentication error:', error);
-                // Redirect immediately to login page
-                window.location.href = 'login_client.html';
+                console.log('🍪 Current cookies:', document.cookie);
+                showAlert('Authentication failed: ' + error.message, 'error');
+                setTimeout(() => {
+                    window.location.href = 'login_client.html';
+                }, 3000);
             }
         });
     </script>

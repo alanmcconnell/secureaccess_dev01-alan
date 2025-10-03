@@ -17,7 +17,7 @@
             min-height: 100vh;
             padding: 20px;
             color: #333;
-            display: none; /* Hidden until admin access is verified */
+            display: block; /* Show page while loading */
         }
 
         .container {
@@ -711,6 +711,7 @@
             <button type="button" class="btn btn-danger" id="deleteBtn" disabled>Delete</button>
             <button type="button" class="btn btn-success" id="submitBtn" disabled>Submit</button>
             <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+            <button type="button" class="btn btn-secondary" id="returnBtn">Return</button>
         </div>
 
         <!-- Delete Confirmation Popup -->
@@ -732,50 +733,11 @@
     </div>
 
     <script>
-        // IMMEDIATE SECURITY CHECK - RUNS BEFORE ANYTHING ELSE
-        (function() {
-            // Get token immediately
-            const urlParams = new URLSearchParams(window.location.search);
-            const tokenFromUrl = urlParams.get('auth_token');
-            const tokenFromStorage = localStorage.getItem('authToken');
-            const token = tokenFromUrl || tokenFromStorage;
-            
-            // If no token at all, redirect immediately
-            if (!token) {
-                window.location.href = 'login_client.html';
-                return;
-            }
-            
-            // Check if token is expired (client-side check)
-            try {
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                const currentTime = Math.floor(Date.now() / 1000);
-                
-                if (payload.exp && payload.exp < currentTime) {
-                    console.log('Token expired, clearing and redirecting');
-                    localStorage.removeItem('authToken');
-                    window.location.href = 'login_client.html';
-                    return;
-                }
-            } catch (error) {
-                console.log('Invalid token format, redirecting');
-                localStorage.removeItem('authToken');
-                window.location.href = 'login_client.html';
-                return;
-            }
-        })();
+        // Authentication will be handled by server-side verification
+        // No client-side token checks needed with HTTP-only cookies
         
-        // Configuration - MUST BE FIRST
-        const API_BASE_URL = 'http://localhost:3000/api';
-        
-        // Database Configuration (for reference - actual connection is in backend)
-        const DB_CONFIG = {
-            host: 'localhost',
-            port: 3306,
-            user: 'nimdas',
-            password: 'FormR!1234',
-            database: 'secureaccess2'
-        };
+        // Configuration - will be set dynamically from server
+        let API_BASE_URL = window.location.origin + '/api';
         
         // State management
         let users = [];
@@ -793,6 +755,7 @@
         const deleteBtn = document.getElementById('deleteBtn');
         const submitBtn = document.getElementById('submitBtn');
         const cancelBtn = document.getElementById('cancelBtn');
+        const returnBtn = document.getElementById('returnBtn');
 
         // Helper functions
         function redirectToLogin(message) {
@@ -804,19 +767,25 @@
             window.location.href = 'login_client.html';
         }
         
-        function initializeAdminPage(authToken) {
-            // Store the token for API calls
-            window.adminAuthToken = authToken;
-            
+        function initializeAdminPage() {
             // Show the admin page content (it's hidden by default)
             document.body.style.display = 'block';
             
-            console.log('🎯 Admin page initialized with valid token');
+            console.log('🎯 Admin page initialized');
         }
 
         // JWT SECURITY - CHECK ADMIN ACCESS BEFORE LOADING
-        (async function checkAdminAccess() {
+        async function checkAdminAccess() {
             console.log('🔐 Checking admin access...');
+            
+            // Get dynamic configuration first
+            try {
+                const config = await ConfigManager.getConfig();
+                API_BASE_URL = config.apiBaseUrl;
+                console.log('Using API URL for admin verification:', API_BASE_URL);
+            } catch (error) {
+                console.warn('Could not get server config, using default');
+            }
             
             // Set a timeout to redirect if authentication takes too long
             const authTimeout = setTimeout(() => {
@@ -824,27 +793,14 @@
                 redirectToLogin('Authentication timeout. Please try again.');
             }, 5000); // 5 second timeout
             
-            // Get token from various sources
-            const urlParams = new URLSearchParams(window.location.search);
-            const tokenFromUrl = urlParams.get('auth_token');
-            const tokenFromStorage = localStorage.getItem('authToken');
-            const token = tokenFromUrl || tokenFromStorage;
-            
-            if (!token) {
-                clearTimeout(authTimeout);
-                console.log('❌ No auth token found');
-                redirectToLogin('No authentication token found');
-                return;
-            }
-            
             try {
-                // Verify admin access with server
+                // Verify admin access with server using HTTP-only cookies
                 const response = await fetch(`${API_BASE_URL}/auth/verify-admin`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    }
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include'
                 });
                 
                 clearTimeout(authTimeout);
@@ -874,13 +830,8 @@
                 
                 console.log('✅ Admin access verified for user:', result.user.username);
                 
-                // Store token if it came from URL
-                if (tokenFromUrl && !tokenFromStorage) {
-                    localStorage.setItem('authToken', token);
-                }
-                
                 // Initialize the admin page
-                initializeAdminPage(token);
+                initializeAdminPage();
                 
                 // Load users after successful authentication
                 setTimeout(loadUsers, 100);
@@ -890,33 +841,22 @@
                 console.error('❌ Error verifying admin access:', error);
                 redirectToLogin('Cannot connect to authentication server. Please ensure the server is running and try again.');
             }
-        })();
+        }
+        
+        // Wait for page load then check admin access
+        window.addEventListener('load', checkAdminAccess);
 
         // API functions - UPDATED WITH JWT AUTHENTICATION
         async function apiCall(endpoint, method = 'GET', data = null) {
-            const token = window.adminAuthToken || localStorage.getItem('authToken');
-            
-            if (!token) {
-                redirectToLogin('Authentication token missing. Please login again.');
-                return;
-            }
-            
             const options = {
                 method,
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 credentials: 'include'
             };
 
-            // Add CSRF token for POST/PUT/DELETE requests
-            if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
-                const csrfToken = await CSRFManager.getToken();
-                if (csrfToken) {
-                    options.headers['X-CSRF-Token'] = csrfToken;
-                }
-            }
+            // No CSRF tokens needed with SameSite=Strict cookies
 
             if (data) {
                 options.body = JSON.stringify(data);
@@ -1365,14 +1305,28 @@
             hideAlert();
         });
 
+        // Return to login page
+        returnBtn.addEventListener('click', () => {
+            window.location.href = 'login_client.html';
+        });
+
         // Enable form change tracking
         userForm.addEventListener('input', () => {
             isEditing = true;
         });
 
         // Initialize the application
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             console.log('Admin Page initialized');
+            
+            // Get dynamic configuration
+            try {
+                const config = await ConfigManager.getConfig();
+                API_BASE_URL = config.apiBaseUrl;
+                console.log('Using API URL:', API_BASE_URL);
+            } catch (error) {
+                console.warn('Could not get server config, using default');
+            }
             
             // Check if server is running
             fetch(`${API_BASE_URL.replace('/api', '')}/health`)

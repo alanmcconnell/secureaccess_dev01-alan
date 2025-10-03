@@ -544,12 +544,14 @@
     </div>
 
     <script>
-        // Configuration
-        const API_BASE_URL = 'http://localhost:3000/api';
-        // const LandingPage = 'http://127.0.0.1:5501/client1/c11_iodd-app/iodd-New-02/member-profile.html';
-        const LandingPage = 'http://127.0.0.1:5501/client/iodd-New-02/member-profile.html'
+        // Configuration - will be set dynamically from server
+        let API_BASE_URL = window.location.origin + '/api';
+        
+        // Get URLs from query parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const LandingPage = urlParams.get('redirect_url') || '_blank';
+        const FailedPage = urlParams.get('failure_url') || '_blank';
         const FailedAttempts = 3;
-        const FailedPage = 'http://localhost:5501/client1/c11_iodd-app/iodd-New-02/index.html';
 
         // State management
         let currentUser = null;
@@ -595,6 +597,12 @@
         function goToLandingPage() {
             hideUserPopup();
             
+            if (LandingPage === '_blank') {
+                // Open blank page in new tab
+                window.open('about:blank', '_blank');
+                return;
+            }
+            
             if (currentUser) {
                 const pkceKey = generateCodeVerifier();
                 const params = new URLSearchParams({
@@ -611,12 +619,10 @@
         function goToAdminPage() {
             hideUserPopup();
             
-            if (currentUser && authToken) {
-                // Store token in localStorage for admin page
-                localStorage.setItem('authToken', authToken);
+            if (currentUser) {
                 window.location.href = 'admin-page.html';
             } else {
-                showAlert('Authentication token missing', 'error');
+                showAlert('Authentication missing', 'error');
             }
         }
 
@@ -694,19 +700,7 @@
                 credentials: 'include'
             };
 
-            // Add CSRF token for POST requests
-            if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
-                try {
-                    const csrfToken = await CSRFManager.getToken();
-                    if (csrfToken) {
-                        options.headers['X-CSRF-Token'] = csrfToken;
-                    } else {
-                        console.warn('No CSRF token available');
-                    }
-                } catch (error) {
-                    console.error('Failed to get CSRF token for request:', error);
-                }
-            }
+            // No CSRF tokens needed with SameSite=Strict cookies
 
             if (data) {
                 options.body = JSON.stringify(data);
@@ -725,11 +719,18 @@
                     }
                 }
 
-                return await response.json();
+                // Check if response has content before parsing JSON
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const text = await response.text();
+                    return text ? JSON.parse(text) : {};
+                } else {
+                    throw new Error('Server returned non-JSON response');
+                }
 
             } catch (error) {
                 if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                    throw new Error('Cannot connect to server. Make sure your backend is running on http://localhost:3000');
+                    throw new Error('Cannot connect to server. Make sure your backend is running on http://localhost:3005');
                 }
                 throw error;
             }
@@ -860,8 +861,17 @@
         });
 
         // Initialize page
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             console.log('SecureAccess Client with PKCE initialized');
+
+            // Get dynamic configuration
+            try {
+                const config = await ConfigManager.getConfig();
+                API_BASE_URL = config.apiBaseUrl;
+                console.log('Using API URL:', API_BASE_URL);
+            } catch (error) {
+                console.warn('Could not get server config, using default');
+            }
 
             // Check server connection
             fetch(`${API_BASE_URL.replace('/api', '')}/health`)
@@ -872,7 +882,7 @@
                     }
                 })
                 .catch(error => {
-                    console.warn('Server not reachable. Make sure your API server is running on http://localhost:3000');
+                    console.warn('Server not reachable. Make sure your API server is running');
                 });
 
             // Check PKCE support
