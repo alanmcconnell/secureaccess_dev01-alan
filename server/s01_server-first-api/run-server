@@ -4,7 +4,9 @@
    nPort="54532";    
    aStg="server"    
    aApp="s01_server-first-api"
-   aSvr="server.mjs"
+#  aSvr="server.mjs"
+   aSvr="server.js"
+
 #  aMode="dev"      # or start for prod, or build
 
 function Help() {

@@ -543,14 +543,17 @@
         </div>
     </div>
 
+    <script src="./_config.js"></script>                                              <!-- .(51013.04.7 RAM Use this) -->
     <script>
         // Configuration - will be set dynamically from server
-        let API_BASE_URL = window.location.origin + '/api';
+//      let API_BASE_URL   =  window.location.origin + '/api';                          //#.(51013.04.8)
+        let API_BASE_URL   =  window.fvaRs.SECURE_API_URL;                              // .(51013.04.8 RAM S.B SECURE_API_URL)
+        let SECURE_API_URL =  window.fvaRs.SECURE_API_URL;                              // .(51013.04.9 RAM Not API_BASE_URL)
         
         // Get URLs from query parameters
         const urlParams = new URLSearchParams(window.location.search);
         const LandingPage = urlParams.get('redirect_url') || '_blank';
-        const FailedPage = urlParams.get('failure_url') || '_blank';
+        const FailedPage  = urlParams.get('failure_url' ) || '_blank';
         const FailedAttempts = 3;
 
         // State management
@@ -707,7 +710,8 @@
             }
 
             try {
-                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+                console.log(    `  fetching( "${API_BASE_URL}${endpoint}" )` )          // .(51013.04.10)
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);    // .(51013.04.11)
 
                 if (!response.ok) {
                     if (response.status === 401) {
@@ -730,7 +734,7 @@
 
             } catch (error) {
                 if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                    throw new Error('Cannot connect to server. Make sure your backend is running on http://localhost:3005');
+                    throw new Error(`Cannot connect to server. Make sure your backend is running on ${API_BASE_URL}`);   // .(51013.04.12)
                 }
                 throw error;
             }
@@ -882,7 +886,8 @@
                     }
                 })
                 .catch(error => {
-                    console.warn('Server not reachable. Make sure your API server is running');
+                    console.warn(`* The SecureAccess server is not running at ${API_BASE_URL}.`);                        // .(51013.04.13)
+                    alert(`* The SecureAccess server is not reachable.\n  Make sure it is running at ${API_BASE_URL}.` ) // .(51013.04.14 RAM Inform the user)
                 });
 
             // Check PKCE support

@@ -8,7 +8,17 @@ const ConfigManager = {
         if (this.config) {
             return this.config;
         }
-        
+       if (!window.fvaRs) {                                                             // .(51013.04.15 RAM Use formR Vars Beg)
+            console.error('  No client _config.js file found:', error);
+            throw new Error('No client _config.js file found');
+       } else {
+            this.config = window.fvaRs;
+            this.config.port       = window.fvaRs.SECURE_PATH.match( /:([0-9]+)\/?/)?.slice(1,2)[0] ?? ''      // .(51013.03.9 RAM Fpr SecureAccess client)    
+            this.config.apiBaseUrl = window.fvaRs.SECURE_API_URL
+     return this.config;
+            }                                                                           // .(51013.04.15 End)
+// ----------------------------------------------------------------------------
+
         // Since client files are served by the same server, use same origin
         try {
             const response = await fetch(`${window.location.origin}/config`);
