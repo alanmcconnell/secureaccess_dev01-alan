@@ -1,7 +1,7 @@
 .env
 Archive
 node_modules
-*v_[0-9]*
+*_v[0-9]*
 *_t[0-9]*
 *.bak
 .DS_Store
