@@ -731,13 +731,15 @@
             </div>
         </div>
     </div>
-
+    <script src="./_config.js"></script>                                              <!-- .(51013.04.4 RAM Use this) -->
     <script>
         // Authentication will be handled by server-side verification
         // No client-side token checks needed with HTTP-only cookies
         
-        // Configuration - will be set dynamically from server
-        let API_BASE_URL = window.location.origin + '/api';
+        // Configuration   - will be set dynamically from server
+//      let API_BASE_URL   =  window.location.origin + '/api';                          //#.(51013.04.5)
+        let API_BASE_URL   =  window.fvaRs.SECURE_API_URL;                              // .(51013.04.5 RAM S.B SECURE_API_URL)
+        let SECURE_API_URL =  window.fvaRs.SECURE_API_URL;                              // .(51013.04.6 RAM Not API_BASE_URL)
         
         // State management
         let users = [];
