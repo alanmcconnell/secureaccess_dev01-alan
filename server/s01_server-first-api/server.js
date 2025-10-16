@@ -1,4 +1,4 @@
-require('dotenv').config({ path: __dirname + '/.env' });
+const dotenv = require('dotenv')
 const express = require('express');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcrypt');
@@ -9,11 +9,20 @@ const cookieParser = require('cookie-parser');
 const csrf = require('csurf');
 const crypto = require('crypto');
 
+             require( "./_config.js" )                                                  // .(51013.03.1 RAM Load process.fvaR)
+//    dotenv.config( { path:       `${ __dirname }/.env`) } );                          //#.(51013.03.2 RAM No workie in windows)
+      dotenv.config( { path: path.join(__dirname, '.env') } );  
+                                                                                        // .(51013.03.2 RAM This works everywhere)
+const SECURE_API_URL   = process.fvaRs.SECURE_API_URL                                   // .(51013.04.1 RAM not SECURE_PATH)
+      process.env.PORT = SECURE_API_URL.match(   /:([0-9]+)\/?/)?.slice(1,2)[0] ?? ''   // .(51013.04.2 RAM Define them here)
+      process.env.HOST = SECURE_API_URL.match(/(.+):[0-9]+\/?/ )?.slice(1,2)[0] ?? ''   // .(51013.04.3)
+
 // Debug environment variables
 console.log('🔧 Environment variables loaded:');
-console.log('   PORT:', process.env.PORT);
-console.log('   DB_HOST:', process.env.DB_HOST);
-console.log('   DB_NAME:', process.env.DB_NAME);
+console.log('   PORT:',       process.env.PORT);
+console.log('   HOST:',       process.env.HOST);
+console.log('   DB_HOST:',    process.env.DB_HOST);
+console.log('   DB_NAME:',    process.env.DB_NAME);
 console.log('   JWT_SECRET:', process.env.JWT_SECRET ? '[SET]' : '[NOT SET]');
 
 // CSRF Token generation
@@ -41,10 +50,13 @@ function csrfCrossOrigin(req, res, next) {
 }
 
 const app = express();
-const PORT = process.env.PORT || 3005;
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const HOST = NODE_ENV === 'production' ? process.env.PRODUCTION_HOST : 'localhost';
-const BASE_URL = `http${NODE_ENV === 'production' ? 's' : ''}://${HOST}:${PORT}`;
+
+const PORT     =  process.env.PORT // || 3005;
+const NODE_ENV =  process.env.NODE_ENV || 'development';
+const HOST     =  NODE_ENV === 'production' ? process.env.PRODUCTION_HOST : process.env.HOST;    // .(51013.03.3 RAM PRODUCTION_HOST is not defined)
+//nst BASE_URL = `http${NODE_ENV === 'production' ? 's' : ''}://${HOST}:${PORT}`;                //#.(51013.03.4)
+const BASE_URL = `${HOST}:${PORT}`;  
+const SECURE_PATH = process.fvaRs.SECURE_PATH                                           // .(51013.03.5 RAM HOST includes http or https)
 
 // JWT Secret - In production, use environment variable
 const JWT_SECRET = process.env.JWT_SECRET || 'SecureAccess-JWT-Secret-Key-2024!@#$%';
@@ -52,12 +64,16 @@ const JWT_EXPIRES_IN = '24h'; // Token expires in 24 hours
 
 // Middleware
 const allowedOrigins = NODE_ENV === 'production' 
-    ? [`https://${HOST}`, `https://${HOST}:${PORT}`]
-    : [
-        `http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`,
-        'http://localhost:3001', 'http://127.0.0.1:3001',
-        'http://localhost:5500', 'http://127.0.0.1:5500'
-    ];
+    ? [ `${HOST}:${PORT}`, `${HOST}`]
+    : [ `${BASE_URL}`, SECURE_PATH ];                                                   // .(51013.04.16 RAM Server: SECURE_API_URL).(51013.03.6 RAM Client: SECURE_PATH)
+
+    allowedOrigins.forEach( aHost => { if (aHost.match( /http:\/\/localhost/ ) ) { allowedOrigins.push( aHost.replace( /\/\/localhost/, "//127.0.0.1" ) ) } } )
+//  ? [ `https://${HOST}`, `https://${HOST}:${PORT}`]
+//  : [ `http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`,
+//      `http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`,
+//      'http://localhost:3001', 'http://127.0.0.1:3001',
+//      'http://localhost:5500', 'http://127.0.0.1:5500'
+//       ];
 
 app.use(cors({
     origin: allowedOrigins,
@@ -1527,16 +1543,30 @@ app.use((req, res) => {
     });
 });
 
+function listRoutes() {                                                                 // .(51007.01.1 RAM Add listRoutes)
+    console.log('\n    === Registered Routes ===');
+    app._router.stack.forEach((middleware, index) => {
+        if (middleware.route) {
+            const methods = Object.keys(middleware.route.methods).join(', ').toUpperCase();
+            console.log(`    ${methods.padEnd(6)} ${middleware.route.path}`);
+        }
+    });
+    console.log('    ========================\n');
+    }                                                                                   // .(51007.01.1 End)
 // Start server
 async function startServer() {
     try {
         await initDatabase();
-        
+
+              listRoutes()       // .(51007.01.1 RAM Add)
+
         server = app.listen(PORT, () => {
             console.log(`🚀 Server running on ${BASE_URL}`);
-            console.log(`📊 Admin page: ${BASE_URL}/admin-page.html`);
+//          console.log(`📊 Admin page:   ${BASE_URL}/admin-page.html`);                 //#.(51013.03.7)
+            console.log(`📊 Admin page:   ${SECURE_PATH}/admin-page.html`);              // .(51013.03.7)
+            console.log(`📊 Login page:   ${SECURE_PATH}/login_client.html`);            // .(51013.03.8)
             console.log(`🏥 Health check: ${BASE_URL}/health`);
-            console.log(`🌍 Environment: ${NODE_ENV}`);
+            console.log(`🌍 Environment:  ${NODE_ENV}`);
             console.log(`🔐 JWT Security: ENABLED`);
         });
         
