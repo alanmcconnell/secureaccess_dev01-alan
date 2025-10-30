@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureAccess - Application Users</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.97);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 1px solid #e1e5e9;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0;
+            flex: 1;
+            text-align: center;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            min-height: 0;
+        }
+
+        .left-panel {
+            width: 280px;
+            background: #f8f9fa;
+            border-right: 1px solid #e1e5e9;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .app-grid {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .app-item {
+            padding: 8px 10px;
+            margin-bottom: 3px;
+            background: white;
+            border: 1px solid #e1e5e9;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 13px;
+        }
+
+        .app-item:hover {
+            background: #e3f2fd;
+            border-color: #667eea;
+        }
+
+        .app-item.selected {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .app-item .name {
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+
+        .right-panel {
+            flex: 1;
+            padding: 8px;
+            overflow-y: auto;
+        }
+
+        .form-container {
+            max-width: 800px;
+        }
+
+        .form-section {
+            margin-bottom: 12px;
+        }
+
+        .form-section.boxed {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 12px;
+            background: #fafafa;
+        }
+
+        .form-section h3 {
+            color: #333;
+            font-size: 15px;
+            margin-bottom: 8px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #e1e5e9;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .form-group {
+            flex: 1;
+            min-width: 180px;
+        }
+
+        .form-group.full-width {
+            flex: 100%;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 3px;
+            color: #333;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            transition: border-color 0.2s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .user-grid {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            background: white;
+        }
+
+        .user-item {
+            padding: 6px 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            font-size: 13px;
+            transition: background-color 0.2s ease;
+        }
+
+        .user-item:hover {
+            background: #f8f9fa;
+        }
+
+        .user-item.selected {
+            background: #e3f2fd;
+            color: #333;
+        }
+
+        .user-item:last-child {
+            border-bottom: none;
+        }
+
+        .date-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .date-row .form-group {
+            flex: 1;
+        }
+
+        .action-buttons {
+            padding: 12px;
+            background: #f8f9fa;
+            border-top: 1px solid #e1e5e9;
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 80px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .alert {
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .left-panel {
+                width: 100%;
+                max-height: 250px;
+            }
+
+            .form-row {
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .form-group {
+                min-width: auto;
+            }
+
+            .right-panel {
+                padding: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>SecureAccess - Application Users</h1>
+            <button type="button" class="btn btn-secondary" id="returnBtn">Return</button>
+        </div>
+
+        <div class="main-content">
+            <!-- Left Panel - Application Grid -->
+            <div class="left-panel">
+                <div class="app-grid" id="appGrid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading applications...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - User Management -->
+            <div class="right-panel">
+                <div class="alert" id="alert"></div>
+                
+                <div class="loading" id="formLoading">
+                    <div class="spinner"></div>
+                    <p>Loading application data...</p>
+                </div>
+
+                <div class="form-container" id="formContainer" style="display: none;">
+                    <!-- Application Description -->
+                    <div class="form-section">
+                        <h3>Application Information</h3>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <textarea id="appDescription" readonly style="background: #f8f9fa;"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- User Assignment Form -->
+                    <div class="form-section boxed">
+                        <h3>Assign User to Application</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="userSelect">User Name:</label>
+                                <select id="userSelect">
+                                    <option value="">Select a user...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="appRoleSelect">Application Security Role:</label>
+                                <select id="appRoleSelect">
+                                    <option value="">Select a role...</option>
+                                </select>
+                                <small style="color: #666; font-size: 11px; margin-top: 3px; display: block;">(Optional, only used in role-based security.)</small>
+                            </div>
+                            <div class="form-group" style="flex: 0.3;">
+                                <label for="statusSelect">Status:</label>
+                                <select id="statusSelect">
+                                    <option value="Inactive" selected>Inactive</option>
+                                    <option value="Active">Active</option>
+                                    <option value="Temp Use">Temp Use</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="date-row">
+                            <div class="form-group" style="flex: 0.4;">
+                                <label for="startDate">Start Date:</label>
+                                <input type="date" id="startDate" disabled>
+                            </div>
+                            <div class="form-group" style="flex: 0.4;">
+                                <label for="endDate">End Date:</label>
+                                <input type="date" id="endDate" disabled>
+                            </div>
+                            <div class="form-group" style="flex: 0.4;">
+                                <label for="trackUserSelect">Track User:</label>
+                                <select id="trackUserSelect">
+                                    <option value="No" selected>No</option>
+                                    <option value="Yes">Yes</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Section Buttons -->
+                        <div class="action-buttons" style="margin-top: 12px; padding: 8px 0; background: transparent; border: none;">
+                            <button type="button" class="btn btn-primary" id="assignBtn" disabled>Add</button>
+                            <button type="button" class="btn btn-danger" id="removeBtn" disabled>Delete</button>
+                            <button type="button" class="btn btn-success" id="updateBtn" disabled>Submit</button>
+                            <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+                        </div>
+                    </div>
+
+                    <!-- Application Users -->
+                    <div class="form-section">
+                        <h3>Application Users List</h3>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <div class="user-grid" id="userGrid">
+                                    <div style="padding: 20px; text-align: center; color: #6c757d;">
+                                        Select an application to view users
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+    </div>
+
+    <script src="./_config.js"></script>
+    <script src="shared-functions.js"></script>
+    <script src="../../lib/acm_Prompts.js"></script>
+    <script>
+        let API_BASE_URL = window.fvaRs.SECURE_API_URL;
+        
+        // State management
+        let applications = [];
+        let users = [];
+        let appUsers = [];
+        let selectedApplication = null;
+        let selectedAppUser = null;
+        let currentAppUserId = 0; // 0 = new record, >0 = existing record
+
+        // DOM elements
+        const appGrid = document.getElementById('appGrid');
+        const formContainer = document.getElementById('formContainer');
+        const formLoading = document.getElementById('formLoading');
+        const alertElement = document.getElementById('alert');
+        const appDescription = document.getElementById('appDescription');
+        const userGrid = document.getElementById('userGrid');
+        const userSelect = document.getElementById('userSelect');
+        const appRoleSelect = document.getElementById('appRoleSelect');
+        const statusSelect = document.getElementById('statusSelect');
+        const trackUserSelect = document.getElementById('trackUserSelect');
+        const startDate = document.getElementById('startDate');
+        const endDate = document.getElementById('endDate');
+        const assignBtn = document.getElementById('assignBtn');
+        const removeBtn = document.getElementById('removeBtn');
+        const updateBtn = document.getElementById('updateBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const returnBtn = document.getElementById('returnBtn');
+
+        // Helper functions
+        async function redirectToLogin(message) {
+            localStorage.removeItem('adminSessionId');
+            if (typeof acm_SecurePopUp === 'function') {
+                await acm_SecurePopUp(message, "OK:ok");
+            } else {
+                alert(message);
+            }
+            window.location.href = 'login_client.html';
+        }
+
+        // API functions with session authentication
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            const sessionId = localStorage.getItem('adminSessionId');
+            
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${sessionId}`
+                },
+                credentials: 'include'
+            };
+
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        redirectToLogin('Session expired. Please login again.');
+                        return;
+                    } else if (response.status === 403) {
+                        redirectToLogin('Access denied. Admin privileges required.');
+                        return;
+                    }
+                    
+                    let errorMessage = `HTTP error! status: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.message || errorMessage;
+                    } catch (e) {
+                        // If response is not JSON, use default error message
+                    }
+                    throw new Error(errorMessage);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                
+                if (error.message.includes('fetch')) {
+                    throw new Error('Cannot connect to server. Please check if the server is running.');
+                }
+                
+                throw error;
+            }
+        }
+
+        function showAlert(message, type = 'error') {
+            alertElement.textContent = message;
+            alertElement.className = `alert ${type} show`;
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    alertElement.classList.remove('show');
+                }, 3000);
+            }
+        }
+
+        function hideAlert() {
+            alertElement.classList.remove('show');
+        }
+
+        // Load all applications
+        async function loadApplications() {
+            try {
+                appGrid.innerHTML = '<div class="loading show"><div class="spinner"></div><p>Loading applications...</p></div>';
+                
+                const result = await apiCall('/applications');
+                applications = result.data || result || [];
+                
+                renderApplicationGrid();
+                
+            } catch (error) {
+                console.error('Error loading applications:', error);
+                showAlert('Failed to load applications: ' + error.message);
+                appGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #dc3545;">Failed to load applications</div>';
+            }
+        }
+
+        // Render application grid
+        function renderApplicationGrid() {
+            if (applications.length === 0) {
+                appGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">No applications found</div>';
+                return;
+            }
+
+            // Sort by application_name
+            applications.sort((a, b) => (a.application_name || '').localeCompare(b.application_name || ''));
+
+            const gridHTML = applications.map(app => `
+                <div class="app-item" data-app-id="${app.application_id}" onclick="selectApplication(${app.application_id})">
+                    <div class="name">${app.application_name || 'Unnamed Application'}</div>
+                </div>
+            `).join('');
+            
+            appGrid.innerHTML = gridHTML;
+        }
+
+        // Load all users for dropdown
+        async function loadUsers() {
+            try {
+                const result = await apiCall('/users');
+                users = result.data || result || [];
+                
+                // Sort by first_name, last_name
+                users.sort((a, b) => {
+                    const nameA = `${a.first_name || ''} ${a.last_name || ''}`.trim();
+                    const nameB = `${b.first_name || ''} ${b.last_name || ''}`.trim();
+                    return nameA.localeCompare(nameB);
+                });
+
+                // Populate user dropdown
+                userSelect.innerHTML = '<option value="">Select a user...</option>';
+                users.forEach(user => {
+                    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+                    userSelect.innerHTML += `<option value="${user.user_id}">${fullName}</option>`;
+                });
+                
+            } catch (error) {
+                console.error('Error loading users:', error);
+                showAlert('Failed to load users: ' + error.message);
+            }
+        }
+
+        // Select application
+        async function selectApplication(applicationId) {
+            try {
+                // Update grid selection
+                document.querySelectorAll('.app-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+                document.querySelector(`[data-app-id="${applicationId}"]`).classList.add('selected');
+
+                // Show loading
+                formLoading.style.display = 'block';
+                formContainer.style.display = 'none';
+
+                // Load application details
+                const appResult = await apiCall(`/applications/${applicationId}`);
+                selectedApplication = appResult.data || appResult;
+
+                // Load application users
+                await loadApplicationUsers(applicationId);
+
+                // Populate form
+                appDescription.value = selectedApplication.description || '';
+                
+                // Populate app role dropdown from security_roles
+                populateAppRoleDropdown(selectedApplication.security_roles);
+                
+                // Show form and enable buttons
+                formLoading.style.display = 'none';
+                formContainer.style.display = 'block';
+                assignBtn.disabled = false;
+
+                hideAlert();
+
+            } catch (error) {
+                console.error('Error loading application:', error);
+                formLoading.style.display = 'none';
+                showAlert('Failed to load application details: ' + error.message);
+            }
+        }
+
+        // Load users assigned to application
+        async function loadApplicationUsers(applicationId) {
+            try {
+                const result = await apiCall(`/app-users/${applicationId}`);
+                appUsers = result.data || result || [];
+                
+                renderUserGrid();
+                
+            } catch (error) {
+                console.error('Error loading application users:', error);
+                appUsers = [];
+                renderUserGrid();
+            }
+        }
+
+        // Render user grid
+        function renderUserGrid() {
+            if (appUsers.length === 0) {
+                userGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">No users assigned to this application</div>';
+                return;
+            }
+
+            const gridHTML = appUsers.map(appUser => {
+                const fullName = `${appUser.first_name || ''} ${appUser.last_name || ''}`.trim();
+                return `
+                    <div class="user-item" data-user-id="${appUser.user_id}" onclick="selectAppUser(${appUser.user_id})">
+                        ${fullName} - ${appUser.status || 'Unknown'}
+                    </div>
+                `;
+            }).join('');
+            
+            userGrid.innerHTML = gridHTML;
+        }
+
+        // Select application user
+        function selectAppUser(userId) {
+            // Update grid selection
+            document.querySelectorAll('.user-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            document.querySelector(`[data-user-id="${userId}"]`).classList.add('selected');
+
+            // Find selected app user
+            selectedAppUser = appUsers.find(au => au.user_id === userId);
+            
+            if (selectedAppUser) {
+                // Set current app_user_id for update mode
+                currentAppUserId = selectedAppUser.app_user_id || userId;
+                
+                // Find the user to check if it's SAAdmin
+                const user = users.find(u => u.user_id === selectedAppUser.user_id);
+                const isSAAdmin = user && user.username === 'SAAdmin';
+                
+                // Populate form with selected user data
+                userSelect.value = selectedAppUser.user_id;
+                appRoleSelect.value = selectedAppUser.app_role || '';
+                statusSelect.value = selectedAppUser.status || 'Inactive';
+                trackUserSelect.value = selectedAppUser.track_user || 'No';
+                startDate.value = selectedAppUser.start_date ? selectedAppUser.start_date.split('T')[0] : '';
+                endDate.value = selectedAppUser.end_date ? selectedAppUser.end_date.split('T')[0] : '';
+                
+                // Apply SAAdmin restrictions
+                if (isSAAdmin) {
+                    // Disable all fields except status
+                    userSelect.disabled = true;
+                    appRoleSelect.disabled = true;
+                    trackUserSelect.disabled = true;
+                    startDate.disabled = true;
+                    endDate.disabled = true;
+                    
+                    // Disable Add and Delete buttons, enable Submit and Cancel
+                    assignBtn.disabled = true;
+                    removeBtn.disabled = true;
+                    updateBtn.disabled = false;
+                    cancelBtn.disabled = false;
+                } else {
+                    // Enable all fields for non-SAAdmin users
+                    userSelect.disabled = false;
+                    appRoleSelect.disabled = false;
+                    trackUserSelect.disabled = false;
+                    
+                    // Enable/disable date fields based on status
+                    toggleDateFields();
+                    
+                    // Enable buttons normally
+                    removeBtn.disabled = false;
+                    updateBtn.disabled = false;
+                }
+            }
+        }
+
+        // Populate app role dropdown from security_roles
+        function populateAppRoleDropdown(securityRoles) {
+            appRoleSelect.innerHTML = '<option value="">Select a role...</option>';
+            
+            if (securityRoles && securityRoles.trim()) {
+                const roles = securityRoles.split(',').map(role => role.trim()).filter(role => role);
+                roles.forEach(role => {
+                    appRoleSelect.innerHTML += `<option value="${role}">${role}</option>`;
+                });
+            }
+        }
+
+        // Toggle date fields based on status
+        function toggleDateFields() {
+            const isTemp = statusSelect.value === 'Temp Use';
+            startDate.disabled = !isTemp;
+            endDate.disabled = !isTemp;
+            
+            if (!isTemp) {
+                startDate.value = '';
+                endDate.value = '';
+            }
+        }
+
+        // Event listeners
+        statusSelect.addEventListener('change', toggleDateFields);
+
+        // Add button - start new record process (does not save)
+        assignBtn.addEventListener('click', () => {
+            // Clear form and start new record mode
+            selectedAppUser = null;
+            userSelect.value = '';
+            appRoleSelect.value = '';
+            statusSelect.value = 'Inactive';
+            trackUserSelect.value = 'No';
+            startDate.value = '';
+            endDate.value = '';
+            currentAppUserId = 0;
+            removeBtn.disabled = true;
+            updateBtn.disabled = false;
+            toggleDateFields();
+            
+            // Clear user grid selection
+            document.querySelectorAll('.user-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            hideAlert();
+        });
+
+        // Remove user from application
+        removeBtn.addEventListener('click', async () => {
+            if (!selectedAppUser) {
+                showAlert('No user selected for removal');
+                return;
+            }
+
+            const result = await acm_SecurePopUp('Are you sure you want to remove this user from the application?', 'Yes:yes', 'No:no');
+            if (result !== 'yes') {
+                return;
+            }
+
+            try {
+                await apiCall(`/app-users/${selectedApplication.application_id}/${selectedAppUser.user_id}`, 'DELETE');
+                
+                showAlert('User removed successfully', 'success');
+                
+                // Reload application users
+                await loadApplicationUsers(selectedApplication.application_id);
+                
+                // Clear selection and form
+                selectedAppUser = null;
+                userSelect.value = '';
+                statusSelect.value = 'Inactive';
+                trackUserSelect.value = 'No';
+                startDate.value = '';
+                endDate.value = '';
+                currentAppUserId = 0;
+                removeBtn.disabled = true;
+                updateBtn.disabled = true;
+                toggleDateFields();
+
+            } catch (error) {
+                console.error('Error removing user:', error);
+                showAlert('Failed to remove user: ' + error.message);
+            }
+        });
+
+        // Submit - create new or update existing record
+        updateBtn.addEventListener('click', async () => {
+            try {
+                const userId = userSelect.value;
+                const status = statusSelect.value;
+                
+                if (!userId) {
+                    showAlert('Please select a user');
+                    return;
+                }
+
+                if (!selectedApplication) {
+                    showAlert('No application selected');
+                    return;
+                }
+
+                // Validate dates if both are provided
+                if (status === 'Temp Use' && startDate.value && endDate.value) {
+                    if (new Date(startDate.value) >= new Date(endDate.value)) {
+                        showAlert('Start date must be before end date');
+                        return;
+                    }
+                }
+
+                const data = {
+                    application_id: selectedApplication.application_id,
+                    user_id: parseInt(userId),
+                    app_role: appRoleSelect.value,
+                    status: status,
+                    track_user: trackUserSelect.value
+                };
+
+                if (status === 'Temp Use') {
+                    if (startDate.value) data.start_date = startDate.value;
+                    if (endDate.value) data.end_date = endDate.value;
+                }
+
+                if (currentAppUserId === 0) {
+                    // Create new record
+                    await apiCall('/app-users', 'POST', data);
+                    showAlert('User assignment created successfully', 'success');
+                } else {
+                    // Update existing record
+                    await apiCall(`/app-users/${selectedApplication.application_id}/${userId}`, 'PUT', data);
+                    showAlert('User assignment updated successfully', 'success');
+                }
+                
+                // Reload application users
+                await loadApplicationUsers(selectedApplication.application_id);
+                
+                // Clear selection
+                selectedAppUser = null;
+                userSelect.value = '';
+                appRoleSelect.value = '';
+                statusSelect.value = 'Inactive';
+                trackUserSelect.value = 'No';
+                startDate.value = '';
+                endDate.value = '';
+                currentAppUserId = 0;
+                removeBtn.disabled = true;
+                updateBtn.disabled = true;
+                toggleDateFields();
+
+            } catch (error) {
+                console.error('Error submitting user assignment:', error);
+                showAlert('Failed to submit user assignment: ' + error.message);
+            }
+        });
+
+        // Cancel button - clear form
+        cancelBtn.addEventListener('click', () => {
+            // Clear selection and form
+            selectedAppUser = null;
+            userSelect.value = '';
+            appRoleSelect.value = '';
+            statusSelect.value = 'Inactive';
+            trackUserSelect.value = 'No';
+            startDate.value = '';
+            endDate.value = '';
+            currentAppUserId = 0;
+            removeBtn.disabled = true;
+            updateBtn.disabled = true;
+            toggleDateFields();
+            
+            // Clear user grid selection
+            document.querySelectorAll('.user-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+            
+            hideAlert();
+        });
+
+        // Return to admin page
+        returnBtn.addEventListener('click', () => {
+            window.location.href = 'admin-page.html';
+        });
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Application Users Page initialized');
+            
+            // Check authentication
+            const sessionId = localStorage.getItem('adminSessionId');
+            if (!sessionId) {
+                redirectToLogin('No admin session found. Please login.');
+                return;
+            }
+
+            // Load data
+            await Promise.all([
+                loadApplications(),
+                loadUsers()
+            ]);
+        });
+    </script>
+</body>
+</html>

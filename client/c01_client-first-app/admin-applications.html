@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureAccess - Applications</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.97);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 1px solid #e1e5e9;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            min-height: 0;
+        }
+
+        .left-panel {
+            width: 280px;
+            background: #f8f9fa;
+            border-right: 1px solid #e1e5e9;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .app-grid {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .app-item {
+            padding: 8px 10px;
+            margin-bottom: 3px;
+            background: white;
+            border: 1px solid #e1e5e9;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 13px;
+        }
+
+        .app-item:hover {
+            background: #e3f2fd;
+            border-color: #667eea;
+        }
+
+        .app-item.selected {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .app-item .name {
+            font-weight: 600;
+            margin-bottom: 3px;
+        }
+
+        .right-panel {
+            flex: 1;
+            padding: 8px;
+            overflow-y: auto;
+        }
+
+        .form-container {
+            max-width: 800px;
+        }
+
+        .form-section {
+            margin-bottom: 12px;
+        }
+
+        .form-section h3 {
+            color: #333;
+            font-size: 15px;
+            margin-bottom: 8px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid #e1e5e9;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+
+        .form-group {
+            flex: 1;
+            min-width: 180px;
+        }
+
+        .form-group.full-width {
+            flex: 100%;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 3px;
+            color: #333;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            transition: border-color 0.2s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .param-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .param-group label {
+            margin-bottom: 0;
+            white-space: nowrap;
+            min-width: 120px;
+        }
+
+        .param-group select {
+            width: 80px;
+            flex-shrink: 0;
+        }
+
+        .status-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-group label {
+            margin-bottom: 0;
+            white-space: nowrap;
+            min-width: 50px;
+        }
+
+        .status-group select {
+            width: 100px;
+            flex-shrink: 0;
+        }
+
+        .app-name-group {
+            flex: 2;
+        }
+
+        .date-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .date-display label {
+            margin-bottom: 0;
+            white-space: nowrap;
+            min-width: 100px;
+        }
+
+        .date-value {
+            text-decoration: underline;
+            font-size: 13px;
+            color: #333;
+        }
+
+        .url-input-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .url-input-container input {
+            padding-right: 35px;
+        }
+
+        .url-icon {
+            position: absolute;
+            right: 8px;
+            cursor: pointer;
+            color: #667eea;
+            font-size: 16px;
+            padding: 4px;
+            border-radius: 3px;
+            transition: all 0.2s ease;
+        }
+
+        .url-icon:hover {
+            background: #f0f0f0;
+            color: #764ba2;
+        }
+
+        .action-buttons {
+            padding: 12px;
+            background: #f8f9fa;
+            border-top: 1px solid #e1e5e9;
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 80px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .alert {
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                flex-direction: column;
+            }
+
+            .left-panel {
+                width: 100%;
+                max-height: 250px;
+            }
+
+            .form-row {
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .form-group {
+                min-width: auto;
+            }
+
+            .right-panel {
+                padding: 6px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>SecureAccess - Applications</h1>
+        </div>
+
+        <div class="main-content">
+            <!-- Left Panel - Application Grid -->
+            <div class="left-panel">
+                <div class="app-grid" id="appGrid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading applications...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Application Form -->
+            <div class="right-panel">
+                <div class="alert" id="alert"></div>
+                
+                <div class="loading" id="formLoading">
+                    <div class="spinner"></div>
+                    <p>Loading application data...</p>
+                </div>
+
+                <div class="form-container" id="formContainer" style="display: none;">
+                    <form id="applicationForm">
+                        <!-- Application Information -->
+                        <div class="form-section">
+                            <h3>Application Information</h3>
+                            <div class="form-row">
+                                <div class="form-group app-name-group">
+                                    <label for="applicationName">Application Name *</label>
+                                    <input type="text" id="applicationName" name="application_name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="status">Status</label>
+                                    <select id="status" name="status" style="width: 100px;">
+                                        <option value="Inactive" selected>Inactive</option>
+                                        <option value="Active">Active</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group full-width">
+                                    <label for="applicationURL">Application URL</label>
+                                    <div class="url-input-container">
+                                        <input type="url" id="applicationURL" name="application_URL" placeholder="https://example.com">
+                                        <span class="url-icon" onclick="openApplicationURL()" title="Open URL in new tab">🔗</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group full-width">
+                                    <label for="redirectURL">Redirect URL</label>
+                                    <div class="url-input-container">
+                                        <input type="url" id="redirectURL" name="redirect_URL" placeholder="https://example.com/redirect">
+                                        <span class="url-icon" onclick="openRedirectURL()" title="Open URL in new tab">🔗</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group full-width">
+                                    <label for="failureURL">Failure URL</label>
+                                    <div class="url-input-container">
+                                        <input type="url" id="failureURL" name="failure_URL" placeholder="https://example.com/failure">
+                                        <span class="url-icon" onclick="openFailureURL()" title="Open URL in new tab">🔗</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group full-width">
+                                    <label for="description">Description</label>
+                                    <textarea id="description" name="description" placeholder="Enter application description"></textarea>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group full-width">
+                                    <label for="securityRoles">Application Security Roles:</label>
+                                    <input type="text" id="securityRoles" name="security_roles" maxlength="200" placeholder="admin,user,manager">
+                                    <small style="color: #666; font-size: 11px; margin-top: 3px; display: block;">(Optional, only used for role-based security. List security roles separated by a comma (','). Values are case sensitive.)</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Parameters -->
+                        <div class="form-section">
+                            <h3>Parameters</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <div class="param-group">
+                                        <label for="parmEmail">Parameter Email</label>
+                                        <select id="parmEmail" name="parm_email">
+                                            <option value="No" selected>No</option>
+                                            <option value="Yes">Yes</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <div class="param-group">
+                                        <label for="parmUsername">Parameter Username</label>
+                                        <select id="parmUsername" name="parm_username">
+                                            <option value="No" selected>No</option>
+                                            <option value="Yes">Yes</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <div class="param-group">
+                                        <label for="parmPKCE">Send PKCE Token</label>
+                                        <select id="parmPKCE" name="parm_PKCE">
+                                            <option value="No" selected>No</option>
+                                            <option value="Yes">Yes</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Application Information -->
+                        <div class="form-section">
+                            <h3>Application Information</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <div class="date-display">
+                                        <label>Application Key:</label>
+                                        <span class="date-value" id="appKey">NULL</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <div class="date-display">
+                                        <label>Date Created</label>
+                                        <span class="date-value" id="dateCreated">-</span>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <div class="date-display">
+                                        <label>Date Updated</label>
+                                        <span class="date-value" id="dateUpdated">-</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <button type="button" class="btn btn-primary" id="addAppBtn">Add</button>
+            <button type="button" class="btn btn-danger" id="deleteBtn" disabled>Delete</button>
+            <button type="button" class="btn btn-success" id="submitBtn" disabled>Submit</button>
+            <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+            <button type="button" class="btn btn-secondary" id="returnBtn">Return</button>
+        </div>
+    </div>
+
+    <script src="./_config.js"></script>
+    <script src="../../lib/acm_Prompts.js"></script>
+    <script>
+        let API_BASE_URL = window.fvaRs.SECURE_API_URL;
+        
+        // State management
+        let applications = [];
+        let selectedApplication = null;
+        let isEditing = false;
+        let isNewApplication = false;
+
+        // DOM elements
+        const appGrid = document.getElementById('appGrid');
+        const formContainer = document.getElementById('formContainer');
+        const formLoading = document.getElementById('formLoading');
+        const applicationForm = document.getElementById('applicationForm');
+        const alertElement = document.getElementById('alert');
+        const addAppBtn = document.getElementById('addAppBtn');
+        const deleteBtn = document.getElementById('deleteBtn');
+        const submitBtn = document.getElementById('submitBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const returnBtn = document.getElementById('returnBtn');
+
+        // Helper functions
+        async function redirectToLogin(message) {
+            localStorage.removeItem('adminSessionId');
+            if (typeof acm_SecurePopUp === 'function') {
+                await acm_SecurePopUp(message, "OK:ok");
+            } else {
+                alert(message);
+            }
+            window.location.href = 'login_client.html';
+        }
+
+        // API functions with session authentication
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            const sessionId = localStorage.getItem('adminSessionId');
+            
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${sessionId}`
+                },
+                credentials: 'include'
+            };
+
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        redirectToLogin('Session expired. Please login again.');
+                        return;
+                    } else if (response.status === 403) {
+                        redirectToLogin('Access denied. Admin privileges required.');
+                        return;
+                    }
+                    
+                    let errorMessage = `HTTP error! status: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.message || errorMessage;
+                    } catch (e) {
+                        // If response is not JSON, use default error message
+                    }
+                    throw new Error(errorMessage);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                
+                if (error.message.includes('fetch')) {
+                    throw new Error('Cannot connect to server. Please check if the server is running.');
+                }
+                
+                throw error;
+            }
+        }
+
+        function showAlert(message, type = 'error') {
+            alertElement.textContent = message;
+            alertElement.className = `alert ${type} show`;
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    alertElement.classList.remove('show');
+                }, 3000);
+            }
+        }
+
+        function hideAlert() {
+            alertElement.classList.remove('show');
+        }
+
+        // Open application URL in new tab
+        function openApplicationURL() {
+            const url = document.getElementById('applicationURL').value.trim();
+            if (url) {
+                // Add protocol if missing
+                const fullUrl = url.startsWith('http') ? url : 'https://' + url;
+                window.open(fullUrl, '_blank');
+            } else {
+                showAlert('Please enter a URL first');
+            }
+        }
+
+        // Open redirect URL in new tab
+        function openRedirectURL() {
+            const url = document.getElementById('redirectURL').value.trim();
+            if (url) {
+                const fullUrl = url.startsWith('http') ? url : 'https://' + url;
+                window.open(fullUrl, '_blank');
+            } else {
+                showAlert('Please enter a redirect URL first');
+            }
+        }
+
+        // Open failure URL in new tab
+        function openFailureURL() {
+            const url = document.getElementById('failureURL').value.trim();
+            if (url) {
+                const fullUrl = url.startsWith('http') ? url : 'https://' + url;
+                window.open(fullUrl, '_blank');
+            } else {
+                showAlert('Please enter a failure URL first');
+            }
+        }
+
+        // Load all applications
+        async function loadApplications() {
+            try {
+                console.log('🔍 Starting loadApplications...');
+                appGrid.innerHTML = '<div class="loading show"><div class="spinner"></div><p>Loading applications...</p></div>';
+                
+                console.log('📡 Making API call to:', `${API_BASE_URL}/applications`);
+                const result = await apiCall('/applications');
+                console.log('📊 API result:', result);
+                
+                applications = result.data || result || [];
+                console.log('📋 Applications array:', applications);
+                console.log('📊 Applications count:', applications.length);
+                
+                renderApplicationGrid();
+                
+            } catch (error) {
+                console.error('❌ Error loading applications:', error);
+                showAlert('Failed to load applications: ' + error.message);
+                appGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #dc3545;">Failed to load applications</div>';
+            }
+        }
+
+        // Render application grid
+        function renderApplicationGrid() {
+            console.log('🎨 Rendering application grid...');
+            console.log('📊 Applications to render:', applications);
+            
+            if (applications.length === 0) {
+                console.log('⚠️ No applications to display');
+                appGrid.innerHTML = '<div style="padding: 20px; text-align: center; color: #6c757d;">No applications found</div>';
+                return;
+            }
+
+            // Sort by application_name
+            applications.sort((a, b) => (a.application_name || '').localeCompare(b.application_name || ''));
+            console.log('📋 Sorted applications:', applications);
+
+            const gridHTML = applications.map(app => `
+                <div class="app-item" data-app-id="${app.application_id}" onclick="selectApplication(${app.application_id})">
+                    <div class="name">${app.application_name || 'Unnamed Application'}</div>
+                </div>
+            `).join('');
+            
+            console.log('🏗️ Generated HTML:', gridHTML);
+            appGrid.innerHTML = gridHTML;
+            console.log('✅ Grid rendered successfully');
+        }
+
+        // Select application
+        async function selectApplication(applicationId) {
+            try {
+                // Update grid selection
+                document.querySelectorAll('.app-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+                document.querySelector(`[data-app-id="${applicationId}"]`).classList.add('selected');
+
+                // Show loading
+                formLoading.style.display = 'block';
+                formContainer.style.display = 'none';
+
+                // Load application details
+                const result = await apiCall(`/applications/${applicationId}`);
+                selectedApplication = result.data || result;
+
+                populateForm(selectedApplication);
+                
+                // Show form and enable buttons
+                formLoading.style.display = 'none';
+                formContainer.style.display = 'block';
+                deleteBtn.disabled = false;
+                submitBtn.disabled = false;
+                isEditing = false;
+                isNewApplication = false;
+
+                hideAlert();
+
+            } catch (error) {
+                console.error('Error loading application:', error);
+                formLoading.style.display = 'none';
+                showAlert('Failed to load application details: ' + error.message);
+            }
+        }
+
+        // Generate random 20-character app key
+        function generateAppKey() {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result = '';
+            for (let i = 0; i < 20; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        // Populate form with application data
+        function populateForm(app) {
+            document.getElementById('applicationName').value = app.application_name || '';
+            document.getElementById('description').value = app.description || '';
+            document.getElementById('applicationURL').value = app.application_URL || '';
+            document.getElementById('redirectURL').value = app.redirect_URL || '';
+            document.getElementById('failureURL').value = app.failure_URL || '';
+            document.getElementById('securityRoles').value = app.security_roles || '';
+            document.getElementById('parmEmail').value = app.parm_email || 'No';
+            document.getElementById('parmUsername').value = app.parm_username || 'No';
+            document.getElementById('parmPKCE').value = app.parm_PKCE || 'No';
+            document.getElementById('status').value = app.status || 'Inactive';
+            
+            // Populate app key and other fields
+            document.getElementById('appKey').textContent = app.app_key || 'NULL';
+            document.getElementById('dateCreated').textContent = app.date_created ? new Date(app.date_created).toLocaleString() : '-';
+            document.getElementById('dateUpdated').textContent = app.date_updated ? new Date(app.date_updated).toLocaleString() : '-';
+        }
+
+        // Add new application
+        addAppBtn.addEventListener('click', () => {
+            // Clear selection
+            document.querySelectorAll('.app-item').forEach(item => {
+                item.classList.remove('selected');
+            });
+
+            // Clear form
+            applicationForm.reset();
+            document.getElementById('status').value = 'Inactive';
+            document.getElementById('parmEmail').value = 'No';
+            document.getElementById('parmUsername').value = 'No';
+            document.getElementById('parmPKCE').value = 'No';
+
+            // Show form
+            formContainer.style.display = 'block';
+            formLoading.style.display = 'none';
+
+            // Update state and buttons
+            selectedApplication = null;
+            isNewApplication = true;
+            isEditing = true;
+            deleteBtn.disabled = true;
+            submitBtn.disabled = false;
+
+            hideAlert();
+            document.getElementById('applicationName').focus();
+        });
+
+        // Submit changes
+        submitBtn.addEventListener('click', async () => {
+            try {
+                const applicationName = document.getElementById('applicationName').value.trim();
+                
+                if (!applicationName) {
+                    showAlert('Application Name is required');
+                    return;
+                }
+
+                const applicationData = {
+                    application_name: applicationName,
+                    description: document.getElementById('description').value.trim(),
+                    application_URL: document.getElementById('applicationURL').value.trim(),
+                    redirect_URL: document.getElementById('redirectURL').value.trim(),
+                    failure_URL: document.getElementById('failureURL').value.trim(),
+                    security_roles: document.getElementById('securityRoles').value.trim(),
+                    parm_email: document.getElementById('parmEmail').value,
+                    parm_username: document.getElementById('parmUsername').value,
+                    parm_PKCE: document.getElementById('parmPKCE').value,
+                    status: document.getElementById('status').value
+                };
+
+                let result;
+                if (isNewApplication) {
+                    // Generate app key for new application
+                    applicationData.app_key = generateAppKey();
+                    result = await apiCall('/applications', 'POST', applicationData);
+                    showAlert('Application created successfully', 'success');
+                } else {
+                    result = await apiCall(`/applications/${selectedApplication.application_id}`, 'PUT', applicationData);
+                    showAlert('Application updated successfully', 'success');
+                }
+
+                // Reload applications list
+                await loadApplications();
+                
+                if (isNewApplication) {
+                    const newAppId = result.data?.application_id || result.application_id;
+                    if (newAppId) {
+                        setTimeout(() => selectApplication(newAppId), 500);
+                    } else {
+                        formContainer.style.display = 'none';
+                        selectedApplication = null;
+                        deleteBtn.disabled = true;
+                        submitBtn.disabled = true;
+                    }
+                } else {
+                    if (selectedApplication && selectedApplication.application_id) {
+                        setTimeout(() => selectApplication(selectedApplication.application_id), 500);
+                    }
+                }
+
+                isEditing = false;
+                isNewApplication = false;
+
+            } catch (error) {
+                console.error('Error saving application:', error);
+                showAlert('Failed to save application: ' + error.message);
+            }
+        });
+
+        // Delete application
+        deleteBtn.addEventListener('click', async () => {
+            if (!selectedApplication || !selectedApplication.application_id) {
+                showAlert('No application selected for deletion');
+                return;
+            }
+
+            const delete_respond = await acm_SecurePopUp('Do you want to delete this application?', 'Yes:yes', 'No:no');
+            
+            if (delete_respond !== 'yes') {
+                return;
+            }
+            
+
+
+            try {
+                await apiCall(`/applications/${selectedApplication.application_id}`, 'DELETE');
+                
+                showAlert('Application deleted successfully', 'success');
+                
+                // Reset form and reload applications
+                formContainer.style.display = 'none';
+                selectedApplication = null;
+                deleteBtn.disabled = true;
+                submitBtn.disabled = true;
+                
+                await loadApplications();
+
+            } catch (error) {
+                console.error('Error deleting application:', error);
+                showAlert('Failed to delete application: ' + error.message);
+            }
+        });
+
+        // Cancel changes
+        cancelBtn.addEventListener('click', async () => {
+            if (isEditing && (isNewApplication || selectedApplication)) {
+                const result = await acm_SecurePopUp('Are you sure you want to cancel? All unsaved changes will be lost.', 'Yes:yes', 'No:no');
+                if (result !== 'yes') {
+                    return;
+                }
+            }
+
+            if (selectedApplication && !isNewApplication) {
+                populateForm(selectedApplication);
+            } else {
+                formContainer.style.display = 'none';
+                document.querySelectorAll('.app-item').forEach(item => {
+                    item.classList.remove('selected');
+                });
+                selectedApplication = null;
+                deleteBtn.disabled = true;
+                submitBtn.disabled = true;
+            }
+
+            isEditing = false;
+            isNewApplication = false;
+            hideAlert();
+        });
+
+        // Return to admin page
+        returnBtn.addEventListener('click', () => {
+            window.location.href = 'admin-page.html';
+        });
+
+        // Enable form change tracking
+        applicationForm.addEventListener('input', () => {
+            isEditing = true;
+        });
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('Applications Page initialized');
+            
+            // Check authentication and load applications
+            const sessionId = localStorage.getItem('adminSessionId');
+            if (!sessionId) {
+                redirectToLogin('No admin session found. Please login.');
+                return;
+            }
+
+            await loadApplications();
+        });
+    </script>
+    <script src="shared-functions.js"></script>
+</body>
+</html>

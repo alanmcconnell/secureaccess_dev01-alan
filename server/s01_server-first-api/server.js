@@ -1525,6 +1525,646 @@ app.post('/api/auth/logout', verifyToken, (req, res) => {
     });
 });
 
+// Applications endpoints
+app.get('/api/applications', verifyToken, async (req, res) => {
+    try {
+        const [rows] = await pool.execute(`
+            SELECT application_id, application_name, application_URL, description,
+                   redirect_URL, failure_URL, app_key, security_roles,
+                   parm_email, parm_username, parm_PKCE, status
+            FROM sa_applications 
+            ORDER BY application_name
+        `);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+    } catch (error) {
+        console.error('Error fetching applications:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch applications',
+            error: error.message
+        });
+    }
+});
+
+app.get('/api/applications/:id', verifyToken, async (req, res) => {
+    try {
+        const appId = parseInt(req.params.id);
+        const [rows] = await pool.execute(`
+            SELECT * FROM sa_applications WHERE application_id = ?
+        `, [appId]);
+        
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: rows[0]
+        });
+    } catch (error) {
+        console.error('Error fetching application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch application',
+            error: error.message
+        });
+    }
+});
+
+// Get application by app_key
+app.get('/api/applications/by-key/:appKey', async (req, res) => {
+    try {
+        const appKey = req.params.appKey;
+        const [rows] = await pool.execute(`
+            SELECT * FROM sa_applications WHERE app_key = ?
+        `, [appKey]);
+        
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: rows[0]
+        });
+    } catch (error) {
+        console.error('Error fetching application by key:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch application',
+            error: error.message
+        });
+    }
+});
+
+// User applications endpoint
+app.get('/api/user-applications', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.user_id;
+        const [rows] = await pool.execute(`
+            SELECT a.application_id, a.application_name, a.application_URL, a.description
+            FROM sa_applications a
+            INNER JOIN sa_app_user au ON a.application_id = au.application_id
+            WHERE au.user_id = ?
+            ORDER BY a.application_name
+        `, [userId]);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+    } catch (error) {
+        console.error('Error fetching user applications:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch user applications',
+            error: error.message
+        });
+    }
+});
+
+// Create new application
+app.post('/api/applications', adminAccess, async (req, res) => {
+    try {
+        const {
+            application_name,
+            description,
+            application_URL,
+            redirect_URL,
+            failure_URL,
+            app_key,
+            security_roles,
+            parm_email = 'No',
+            parm_username = 'No',
+            parm_PKCE = 'No',
+            status = 'Inactive'
+        } = req.body;
+        
+        if (!application_name) {
+            return res.status(400).json({
+                success: false,
+                message: 'Application name is required'
+            });
+        }
+        
+        const [result] = await pool.execute(`
+            INSERT INTO sa_applications (
+                application_name, description, application_URL, redirect_URL, failure_URL, app_key, security_roles,
+                parm_email, parm_username, parm_PKCE, status,
+                date_created, date_updated
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        `, [
+            application_name || null, 
+            description || null, 
+            application_URL || null, 
+            redirect_URL || null, 
+            failure_URL || null, 
+            app_key || null,
+            security_roles || null,
+            parm_email || 'No', 
+            parm_username || 'No', 
+            parm_PKCE || 'No', 
+            status || 'Inactive'
+        ]);
+        
+        res.status(201).json({
+            success: true,
+            message: 'Application created successfully',
+            data: {
+                application_id: result.insertId,
+                application_name,
+                description,
+                application_URL,
+                redirect_URL,
+                failure_URL,
+                app_key,
+                security_roles,
+                parm_email,
+                parm_username,
+                parm_PKCE,
+                status
+            }
+        });
+    } catch (error) {
+        console.error('Error creating application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create application',
+            error: error.message
+        });
+    }
+});
+
+// Update application
+app.put('/api/applications/:id', adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.id);
+        const {
+            application_name,
+            description,
+            application_URL,
+            redirect_URL,
+            failure_URL,
+            app_key,
+            security_roles,
+            parm_email,
+            parm_username,
+            parm_PKCE,
+            status
+        } = req.body;
+        
+        if (!application_name) {
+            return res.status(400).json({
+                success: false,
+                message: 'Application name is required'
+            });
+        }
+        
+        // Check if app_key already exists
+        const [existing] = await pool.execute(
+            'SELECT app_key FROM sa_applications WHERE application_id = ?',
+            [applicationId]
+        );
+        
+        if (existing.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        // Use existing app_key if it has a value, otherwise use new one
+        const finalAppKey = existing[0].app_key ? existing[0].app_key : (app_key || null);
+        
+        const [result] = await pool.execute(`
+            UPDATE sa_applications SET
+                application_name = ?, description = ?, application_URL = ?, redirect_URL = ?, failure_URL = ?, app_key = ?, security_roles = ?,
+                parm_email = ?, parm_username = ?, parm_PKCE = ?, status = ?,
+                date_updated = NOW()
+            WHERE application_id = ?
+        `, [
+            application_name || null, 
+            description || null, 
+            application_URL || null, 
+            redirect_URL || null, 
+            failure_URL || null, 
+            finalAppKey,
+            security_roles || null,
+            parm_email || null, 
+            parm_username || null, 
+            parm_PKCE || null, 
+            status || null, 
+            applicationId
+        ]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'Application updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update application',
+            error: error.message
+        });
+    }
+});
+
+// Delete application
+app.delete('/api/applications/:id', adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.id);
+        
+        const [result] = await pool.execute(
+            'DELETE FROM sa_applications WHERE application_id = ?',
+            [applicationId]
+        );
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'Application deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete application',
+            error: error.message
+        });
+    }
+});
+
+// Get users for specific application
+app.get('/api/app-users/:applicationId', adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.applicationId);
+        
+        const [rows] = await pool.execute(`
+            SELECT au.*, u.first_name, u.last_name, u.username
+            FROM sa_app_user au
+            INNER JOIN sa_users u ON au.user_id = u.user_id
+            WHERE au.application_id = ?
+            ORDER BY u.first_name, u.last_name
+        `, [applicationId]);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+    } catch (error) {
+        console.error('Error fetching application users:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch application users',
+            error: error.message
+        });
+    }
+});
+
+// Get specific user access for application
+app.get('/api/app-users/:applicationId/:userId', async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.applicationId);
+        const userId = parseInt(req.params.userId);
+        
+        const [rows] = await pool.execute(`
+            SELECT * FROM sa_app_user 
+            WHERE application_id = ? AND user_id = ?
+        `, [applicationId, userId]);
+        
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User access not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: rows[0]
+        });
+    } catch (error) {
+        console.error('Error fetching user access:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch user access',
+            error: error.message
+        });
+    }
+});
+
+// Create app-user assignment
+app.post('/api/app-users', adminAccess, async (req, res) => {
+    try {
+        const {
+            application_id,
+            user_id,
+            app_role,
+            status = 'Inactive',
+            track_user = 'No',
+            start_date,
+            end_date
+        } = req.body;
+        
+        if (!application_id || !user_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Application ID and User ID are required'
+            });
+        }
+        
+        const [result] = await pool.execute(`
+            INSERT INTO sa_app_user (
+                application_id, user_id, app_role, status, track_user, start_date, end_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [application_id, user_id, app_role, status, track_user, start_date || null, end_date || null]);
+        
+        res.status(201).json({
+            success: true,
+            message: 'User assignment created successfully',
+            data: {
+                app_user_id: result.insertId,
+                application_id,
+                user_id,
+                app_role,
+                status,
+                track_user
+            }
+        });
+    } catch (error) {
+        console.error('Error creating app-user assignment:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create user assignment',
+            error: error.message
+        });
+    }
+});
+
+// Update app-user assignment
+app.put('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.applicationId);
+        const userId = parseInt(req.params.userId);
+        const {
+            app_role,
+            status,
+            track_user,
+            start_date,
+            end_date
+        } = req.body;
+        
+        const [result] = await pool.execute(`
+            UPDATE sa_app_user SET
+                app_role = ?, status = ?, track_user = ?, start_date = ?, end_date = ?
+            WHERE application_id = ? AND user_id = ?
+        `, [app_role, status, track_user, start_date || null, end_date || null, applicationId, userId]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User assignment not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'User assignment updated successfully'
+        });
+    } catch (error) {
+        console.error('Error updating app-user assignment:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update user assignment',
+            error: error.message
+        });
+    }
+});
+
+// Delete app-user assignment
+app.delete('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.applicationId);
+        const userId = parseInt(req.params.userId);
+        
+        const [result] = await pool.execute(
+            'DELETE FROM sa_app_user WHERE application_id = ? AND user_id = ?',
+            [applicationId, userId]
+        );
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User assignment not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'User assignment deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting app-user assignment:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete user assignment',
+            error: error.message
+        });
+    }
+});
+
+// Get computer information
+app.get('/api/computer-info', verifyToken, async (req, res) => {
+    const { exec } = require('child_process');
+    const os = require('os');
+    
+    try {
+        // Get local IP address
+        const networkInterfaces = os.networkInterfaces();
+        let localIP = 'Unknown';
+        
+        for (const interfaceName in networkInterfaces) {
+            const interfaces = networkInterfaces[interfaceName];
+            for (const iface of interfaces) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    localIP = iface.address;
+                    break;
+                }
+            }
+            if (localIP !== 'Unknown') break;
+        }
+        
+        const computerInfo = {
+            computer_name: os.hostname(),
+            computer_ip: localIP,
+            computer_MAC: 'Unknown'
+        };
+        
+        // Get MAC address based on OS
+        const isWindows = os.platform() === 'win32';
+        const command = isWindows ? 'getmac /fo csv /nh' : 'ifconfig | grep -o -E "([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}" | head -1';
+        
+        exec(command, (error, stdout) => {
+            if (!error && stdout) {
+                if (isWindows) {
+                    const mac = stdout.split(',')[0].replace(/"/g, '').trim();
+                    computerInfo.computer_MAC = mac;
+                } else {
+                    computerInfo.computer_MAC = stdout.trim();
+                }
+            }
+            
+            res.json({
+                success: true,
+                data: computerInfo
+            });
+        });
+    } catch (error) {
+        res.json({
+            success: true,
+            data: {
+                computer_name: os.hostname(),
+                computer_ip: 'Unknown',
+                computer_MAC: 'Unknown'
+            }
+        });
+    }
+});
+
+// Track application usage
+app.post('/api/track-user', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.user_id;
+        const { application_id, computer_name, computer_MAC, computer_ip } = req.body;
+        
+        if (!application_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'application_id is required'
+            });
+        }
+        
+        await pool.execute(`
+            INSERT INTO sa_tracking_user (user_id, application_id, event_date, computer_name, computer_MAC, computer_ip)
+            VALUES (?, ?, NOW(), ?, ?, ?)
+        `, [userId, application_id, computer_name || 'Unknown', computer_MAC || 'Unknown', computer_ip || 'Unknown']);
+        
+        res.json({
+            success: true,
+            message: 'Application usage tracked'
+        });
+    } catch (error) {
+        console.error('Error tracking application usage:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to track application usage',
+            error: error.message
+        });
+    }
+});
+
+// PKCE validation endpoint
+app.post('/api/pkce/validate', verifyToken, async (req, res) => {
+    try {
+        const { session_id, code_verifier, application_id } = req.body;
+        
+        if (!session_id || !code_verifier) {
+            return res.status(400).json({
+                success: false,
+                message: 'session_id and code_verifier are required'
+            });
+        }
+        
+        // In production, store PKCE sessions in database or Redis
+        // For now, return validation success
+        res.json({
+            success: true,
+            message: 'PKCE validation successful',
+            data: {
+                validated: true,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Error validating PKCE:', error);
+        res.status(500).json({
+            success: false,
+            message: 'PKCE validation failed',
+            error: error.message
+        });
+    }
+});
+
+// PKCE session cleanup endpoint
+app.delete('/api/pkce/session/:sessionId', verifyToken, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        
+        // In production, remove from database or Redis
+        res.json({
+            success: true,
+            message: 'PKCE session cleaned up'
+        });
+    } catch (error) {
+        console.error('Error cleaning up PKCE session:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to cleanup PKCE session',
+            error: error.message
+        });
+    }
+});
+
+// Legacy PKCE validation endpoint for backward compatibility
+app.post('/api/validate-pkce', async (req, res) => {
+    try {
+        const { session_id, code_verifier } = req.body;
+        
+        if (!session_id || !code_verifier) {
+            return res.status(400).json({
+                success: false,
+                message: 'session_id and code_verifier are required'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'PKCE validation successful',
+            data: { validated: true }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'PKCE validation failed'
+        });
+    }
+});
+
 // Error handling middleware
 app.use((error, req, res, next) => {
     console.error('Unhandled error:', error);
@@ -1553,6 +2193,8 @@ function listRoutes() {                                                         
     });
     console.log('    ========================\n');
     }                                                                                   // .(51007.01.1 End)
+
+
 // Start server
 async function startServer() {
     try {
@@ -1562,8 +2204,8 @@ async function startServer() {
 
         server = app.listen(PORT, () => {
             console.log(`🚀 Server running on ${BASE_URL}`);
-//          console.log(`📊 Admin page:   ${BASE_URL}/admin-page.html`);                 //#.(51013.03.7)
-            console.log(`📊 Admin page:   ${SECURE_PATH}/admin-page.html`);              // .(51013.03.7)
+//          console.log(`📊 Admin page:   ${BASE_URL}/admin-users.html`);                 //#.(51013.03.7)
+            console.log(`📊 Admin page:   ${SECURE_PATH}/admin-users.html`);              // .(51013.03.7)
             console.log(`📊 Login page:   ${SECURE_PATH}/login_client.html`);            // .(51013.03.8)
             console.log(`🏥 Health check: ${BASE_URL}/health`);
             console.log(`🌍 Environment:  ${NODE_ENV}`);

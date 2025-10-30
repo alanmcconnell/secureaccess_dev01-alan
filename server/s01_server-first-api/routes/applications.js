@@ -3,9 +3,10 @@ const router = express.Router();
 const {
   getApplicationById,
   getAllApplications,
-  createApplication
+  createApplication,
+  getUserApplications
 } = require('../controllers/applicationsController');
-const { generalRateLimit } = require('../middleware/auth');
+const { generalRateLimit, authenticateToken } = require('../middleware/auth');
 
 // Apply rate limiting to application routes
 router.use(generalRateLimit);

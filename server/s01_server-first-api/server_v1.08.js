@@ -5,16 +5,17 @@ const cors = require('cors');
 const path = require('path');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 55351;
 
 // Middleware
 app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Access']
+    origin: ['http://localhost:55351', 'http://127.0.0.1:55301', 'http://localhost:55301'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id', 'x-session-id'],
+    credentials: true
 }));
 app.use(express.json());
-app.use(express.static('public')); // Serve static files
+app.use(express.static(path.join(__dirname, '../../client/c01_client-first-app'))); // Serve static files
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -22,21 +23,58 @@ app.use((req, res, next) => {
     next();
 });
 
-// Admin access middleware (simple check for admin operations)
+// Simple session store
+const activeSessions = new Map();
+
+// Admin access middleware
 function adminAccess(req, res, next) {
-    // For admin page, allow access with admin header
-    if (req.headers['x-admin-access'] === 'true') {
-        return next();
+    const authHeader = req.headers['authorization'];
+    const sessionId = authHeader ? authHeader.replace('Bearer ', '') : null;
+    
+    console.log('🔍 Auth check:', { authHeader, sessionId, activeSessions: Array.from(activeSessions.keys()) });
+    
+    if (!sessionId || !activeSessions.has(sessionId)) {
+        return res.status(401).json({
+            success: false,
+            message: 'Authentication required'
+        });
     }
     
-    // For other requests, you could add JWT token validation here
-    // For now, allow all requests to proceed
+    const session = activeSessions.get(sessionId);
+    if (session.role !== 'Admin') {
+        return res.status(403).json({
+            success: false,
+            message: 'Admin access required'
+        });
+    }
+    
+    next();
+}
+
+// User access middleware (for regular users)
+function userAccess(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const sessionId = authHeader ? authHeader.replace('Bearer ', '') : null;
+    
+    console.log('🔍 User auth check:', { authHeader, sessionId, activeSessions: Array.from(activeSessions.keys()) });
+    
+    if (!sessionId || !activeSessions.has(sessionId)) {
+        console.log('❌ User auth failed: session not found');
+        return res.status(401).json({
+            success: false,
+            message: 'Authentication required'
+        });
+    }
+    
+    const session = activeSessions.get(sessionId);
+    console.log('✅ User auth success:', { userId: session.userId, role: session.role });
+    req.user = session; // Add user info to request
     next();
 }
 
 // Database configuration
 const dbConfig = {
-    host: 'localhost',
+    host: '92.112.184.206',
     port: 3306,
     user: 'nimdas',
     password: 'FormR!1234',
@@ -73,7 +111,7 @@ async function initDatabase() {
 // Ensure sa_users table exists with proper structure
 async function ensureTableExists() {
     try {
-        const createTableSQL = `
+        const createUsersTableSQL = `
             CREATE TABLE IF NOT EXISTS sa_users (
                 user_id INT AUTO_INCREMENT PRIMARY KEY,
                 first_name VARCHAR(50),
@@ -96,11 +134,101 @@ async function ensureTableExists() {
             )
         `;
         
-        await pool.execute(createTableSQL);
+        await pool.execute(createUsersTableSQL);
         console.log('✅ sa_users table verified/created');
         
+        const createApplicationsTableSQL = `
+            CREATE TABLE IF NOT EXISTS sa_applications (
+                application_id INT AUTO_INCREMENT PRIMARY KEY,
+                application_name VARCHAR(100) NOT NULL,
+                description TEXT,
+                application_URL VARCHAR(255),
+                parm_email ENUM('Yes', 'No') DEFAULT 'No',
+                parm_username ENUM('Yes', 'No') DEFAULT 'No',
+                parm_PKCE ENUM('Yes', 'No') DEFAULT 'No',
+                status ENUM('Active', 'Inactive') DEFAULT 'Inactive',
+                date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                date_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        `;
+        
+        await pool.execute(createApplicationsTableSQL);
+        console.log('✅ sa_applications table created with correct structure');
+        
+        const createAppUserTableSQL = `
+            CREATE TABLE IF NOT EXISTS sa_app_user (
+                application_id INT NOT NULL,
+                user_id INT NOT NULL,
+                status ENUM('Active', 'Inactive', 'Temp Use') DEFAULT 'Inactive',
+                start_date DATE NULL,
+                end_date DATE NULL,
+                track_user ENUM('Yes', 'No') DEFAULT 'No',
+                date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                date_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (application_id, user_id),
+                FOREIGN KEY (application_id) REFERENCES sa_applications(application_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES sa_users(user_id) ON DELETE CASCADE
+            )
+        `;
+        
+        await pool.execute(createAppUserTableSQL);
+        console.log('✅ sa_app_user table created with correct structure');
+        
+        const createTrackingUserTableSQL = `
+            CREATE TABLE IF NOT EXISTS sa_tracking_user (
+                track_id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                application_id INT NOT NULL,
+                event_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                computer_name VARCHAR(255),
+                computer_MAC VARCHAR(17),
+                computer_ip VARCHAR(45),
+                FOREIGN KEY (application_id) REFERENCES sa_applications(application_id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES sa_users(user_id) ON DELETE CASCADE
+            )
+        `;
+        
+        await pool.execute(createTrackingUserTableSQL);
+        console.log('✅ sa_tracking_user table created with correct structure');
+        
+        // Add parm_PKCE column if it doesn't exist
+        try {
+            await pool.execute('ALTER TABLE sa_applications ADD COLUMN parm_PKCE ENUM(\'Yes\', \'No\') DEFAULT \'No\'');
+            console.log('✅ Added parm_PKCE column to sa_applications table');
+        } catch (error) {
+            if (error.code === 'ER_DUP_FIELDNAME') {
+                console.log('✅ parm_PKCE column already exists');
+            } else {
+                console.error('❌ Error adding parm_PKCE column:', error.message);
+            }
+        }
+        
+        // Add app_run_count column if it doesn't exist
+        try {
+            await pool.execute('ALTER TABLE sa_applications ADD COLUMN app_run_count INT DEFAULT 0');
+            console.log('✅ Added app_run_count column to sa_applications table');
+        } catch (error) {
+            if (error.code === 'ER_DUP_FIELDNAME') {
+                console.log('✅ app_run_count column already exists');
+            } else {
+                console.error('❌ Error adding app_run_count column:', error.message);
+            }
+        }
+        
+        // Add track_user column to sa_app_user if it doesn't exist
+        try {
+            await pool.execute('ALTER TABLE sa_app_user ADD COLUMN track_user ENUM(\'Yes\', \'No\') DEFAULT \'No\'');
+            console.log('✅ Added track_user column to sa_app_user table');
+        } catch (error) {
+            if (error.code === 'ER_DUP_FIELDNAME') {
+                console.log('✅ track_user column already exists');
+            } else {
+                console.error('❌ Error adding track_user column:', error.message);
+            }
+        }
+        
     } catch (error) {
-        console.error('❌ Error creating sa_users table:', error.message);
+        console.error('❌ Error creating tables:', error.message);
     }
 }
 
@@ -134,40 +262,161 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Test bcrypt endpoint
-app.get('/api/test-bcrypt', async (req, res) => {
-    const testPassword = 'password123';
-    const wrongHash = '$2b$12$LQv3c1yqBwcVsvDwxVFOa.hNt/p5j9RLGPLBrkQUTz/p8QFJ1aP.q';
-    
+
+
+// Get current user profile (for regular users) - MOVED UP to avoid conflict with /api/users/:id
+app.get('/api/users/me', userAccess, async (req, res) => {
+    console.log('✅ GET /api/users/me called with userAccess middleware');
     try {
-        console.log('🧪 Testing bcrypt with known values...');
-        console.log(`   Password: ${testPassword}`);
-        console.log(`   Wrong Hash: ${wrongHash}`);
+        const userId = req.user.userId;
         
-        const wrongResult = await bcrypt.compare(testPassword, wrongHash);
-        console.log(`   Wrong hash result: ${wrongResult}`);
+        const [rows] = await pool.execute(`
+            SELECT 
+                user_id,
+                first_name,
+                last_name,
+                username,
+                email,
+                account_status,
+                two_factor_enabled,
+                role,
+                security_question_1,
+                security_question_2,
+                token_expiration_minutes,
+                last_login_timestamp,
+                created_at,
+                updated_at
+            FROM sa_users 
+            WHERE user_id = ?
+        `, [userId]);
         
-        // Generate correct hash
-        console.log('🔧 Generating correct hash...');
-        const correctHash = await hashPassword(testPassword);
-        console.log(`   Correct Hash: ${correctHash}`);
-        
-        const correctResult = await bcrypt.compare(testPassword, correctHash);
-        console.log(`   Correct hash result: ${correctResult}`);
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
         
         res.json({
             success: true,
-            password: testPassword,
-            wrong_hash: wrongHash,
-            wrong_result: wrongResult,
-            correct_hash: correctHash,
-            correct_result: correctResult,
-            sql_command: `UPDATE sa_users SET master_password_hash = '${correctHash}' WHERE username = 'officecat';`
+            data: rows[0]
         });
+        
     } catch (error) {
-        console.error('❌ Bcrypt test error:', error);
-        res.json({
+        console.error('Error fetching user profile:', error);
+        res.status(500).json({
             success: false,
+            message: 'Failed to fetch profile',
+            error: error.message
+        });
+    }
+});
+
+// Update current user profile (for regular users) - MOVED UP to avoid conflict with /api/users/:id
+app.put('/api/users/me', userAccess, async (req, res) => {
+    console.log('✅ PUT /api/users/me called with userAccess middleware');
+    try {
+        const userId = req.user.userId;
+        
+        const {
+            first_name,
+            last_name,
+            username,
+            email,
+            password,
+            security_question_1,
+            security_answer_1,
+            security_question_2,
+            security_answer_2
+        } = req.body;
+        
+        // Build dynamic update query
+        const updates = [];
+        const values = [];
+        
+        if (first_name !== undefined) {
+            updates.push('first_name = ?');
+            values.push(first_name);
+        }
+        if (last_name !== undefined) {
+            updates.push('last_name = ?');
+            values.push(last_name);
+        }
+        if (username !== undefined) {
+            updates.push('username = ?');
+            values.push(username);
+        }
+        if (email !== undefined) {
+            updates.push('email = ?');
+            values.push(email);
+        }
+        if (password !== undefined && password.trim() !== '') {
+            const passwordHash = await hashPassword(password);
+            updates.push('master_password_hash = ?');
+            values.push(passwordHash);
+        }
+        if (security_question_1 !== undefined) {
+            updates.push('security_question_1 = ?');
+            values.push(security_question_1);
+        }
+        if (security_answer_1 !== undefined && security_answer_1.trim() !== '') {
+            const hashedAnswer1 = await hashPassword(security_answer_1.trim());
+            updates.push('security_answer_1_hash = ?');
+            values.push(hashedAnswer1);
+        }
+        if (security_question_2 !== undefined) {
+            updates.push('security_question_2 = ?');
+            values.push(security_question_2);
+        }
+        if (security_answer_2 !== undefined && security_answer_2.trim() !== '') {
+            const hashedAnswer2 = await hashPassword(security_answer_2.trim());
+            updates.push('security_answer_2_hash = ?');
+            values.push(hashedAnswer2);
+        }
+        
+        if (updates.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No fields to update'
+            });
+        }
+        
+        updates.push('updated_at = CURRENT_TIMESTAMP');
+        values.push(userId);
+        
+        const updateSQL = `UPDATE sa_users SET ${updates.join(', ')} WHERE user_id = ?`;
+        
+        const [updateResult] = await pool.execute(updateSQL, values);
+        
+        // Fetch updated user data
+        const [updatedUser] = await pool.execute(`
+            SELECT 
+                user_id,
+                first_name,
+                last_name,
+                username,
+                email,
+                account_status,
+                two_factor_enabled,
+                security_question_1,
+                security_question_2,
+                token_expiration_minutes,
+                updated_at
+            FROM sa_users 
+            WHERE user_id = ?
+        `, [userId]);
+        
+        res.json({
+            success: true,
+            message: 'Profile updated successfully',
+            data: updatedUser[0]
+        });
+        
+    } catch (error) {
+        console.error('Error updating profile:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update profile',
             error: error.message
         });
     }
@@ -664,57 +913,7 @@ app.delete('/api/users/:id', adminAccess, async (req, res) => {
     }
 });
 
-// Debug endpoint for security answers
-app.get('/api/debug/user/:id/security', adminAccess, async (req, res) => {
-    try {
-        const userId = parseInt(req.params.id);
-        
-        const [rows] = await pool.execute(`
-            SELECT 
-                user_id,
-                username,
-                security_question_1,
-                security_answer_1_hash,
-                security_question_2,
-                security_answer_2_hash,
-                LENGTH(security_answer_1_hash) as answer1_hash_length,
-                LENGTH(security_answer_2_hash) as answer2_hash_length
-            FROM sa_users 
-            WHERE user_id = ?
-        `, [userId]);
-        
-        if (rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        const user = rows[0];
-        
-        res.json({
-            success: true,
-            data: {
-                user_id: user.user_id,
-                username: user.username,
-                security_question_1: user.security_question_1,
-                has_security_answer_1: !!user.security_answer_1_hash,
-                answer1_hash_length: user.answer1_hash_length,
-                security_question_2: user.security_question_2,
-                has_security_answer_2: !!user.security_answer_2_hash,
-                answer2_hash_length: user.answer2_hash_length
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error fetching security debug info:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch security info',
-            error: error.message
-        });
-    }
-});
+
 
 // Reset password for a single user
 app.post('/api/admin/reset-single-password', adminAccess, async (req, res) => {
@@ -822,6 +1021,598 @@ app.post('/api/admin/fix-passwords', adminAccess, async (req, res) => {
     }
 });
 
+
+// Get user applications (for app launcher)
+app.get('/api/user-applications', userAccess, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        
+        const [rows] = await pool.execute(`
+            SELECT APP.application_name, APP.application_id, USR.user_id, AU.app_user_id 
+            FROM sa_applications APP, sa_users USR, sa_app_user AU
+            WHERE 
+               USR.user_id = ? AND 
+               USR.user_id = AU.user_id AND 
+               AU.application_id = APP.application_id AND 
+               APP.status = 'Active' AND
+               (AU.status = 'Active' OR (AU.status = 'Temp Use' AND AU.start_date <= CURDATE() AND AU.end_date >= CURDATE()))
+            ORDER BY 
+               APP.application_name
+        `, [userId]);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+        
+    } catch (error) {
+        console.error('Error fetching user applications:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch user applications',
+            error: error.message
+        });
+    }
+});
+
+// Get current user info (for authentication check)
+app.get('/api/auth/me', userAccess, async (req, res) => {
+    try {
+        res.json({
+            success: true,
+            data: {
+                user_id: req.user.userId,
+                username: req.user.username,
+                role: req.user.role
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching current user:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch current user',
+            error: error.message
+        });
+    }
+});
+
+// Get computer information
+app.get('/api/computer-info', userAccess, async (req, res) => {
+    try {
+        const os = require('os');
+        const { execSync } = require('child_process');
+        
+        let computerName = os.hostname();
+        let computerIP = 'Unknown';
+        let computerMAC = 'Unknown';
+        
+        // Get IP address
+        const networkInterfaces = os.networkInterfaces();
+        for (const interfaceName in networkInterfaces) {
+            const interfaces = networkInterfaces[interfaceName];
+            for (const iface of interfaces) {
+                if (iface.family === 'IPv4' && !iface.internal) {
+                    computerIP = iface.address;
+                    computerMAC = iface.mac;
+                    break;
+                }
+            }
+            if (computerIP !== 'Unknown') break;
+        }
+        
+        res.json({
+            success: true,
+            data: {
+                computer_name: computerName,
+                computer_ip: computerIP,
+                computer_MAC: computerMAC
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error getting computer info:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get computer info',
+            error: error.message
+        });
+    }
+});
+
+
+
+// Get all applications
+app.get('/api/applications', async (req, res) => {
+    try {
+        console.log('🔍 GET /api/applications - Loading all applications...');
+        
+        const [rows] = await pool.execute(`
+            SELECT 
+                application_id,
+                application_name,
+                description,
+                application_URL,
+                parm_email,
+                parm_username,
+                parm_PKCE,
+                status,
+                app_run_count,
+                date_created,
+                date_updated
+            FROM sa_applications 
+            ORDER BY application_name
+        `);
+        
+        console.log(`✅ Found ${rows.length} applications:`, rows);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+        
+    } catch (error) {
+        console.error('❌ Error fetching applications:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch applications',
+            error: error.message
+        });
+    }
+});
+
+// Get specific application by ID
+app.get('/api/applications/:id', async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.id);
+        
+        if (isNaN(applicationId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid application ID'
+            });
+        }
+        
+        const [rows] = await pool.execute(`
+            SELECT 
+                application_id,
+                application_name,
+                description,
+                application_URL,
+                parm_email,
+                parm_username,
+                parm_PKCE,
+                status,
+                app_run_count,
+                date_created,
+                date_updated
+            FROM sa_applications 
+            WHERE application_id = ?
+        `, [applicationId]);
+        
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: rows[0]
+        });
+        
+    } catch (error) {
+        console.error('Error fetching application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch application',
+            error: error.message
+        });
+    }
+});
+
+// Create new application
+app.post('/api/applications', async (req, res) => {
+    try {
+        const {
+            application_name,
+            description,
+            application_URL,
+            parm_email = 'No',
+            parm_username = 'No',
+            parm_PKCE = 'No',
+            status = 'Inactive'
+        } = req.body;
+        
+        if (!application_name) {
+            return res.status(400).json({
+                success: false,
+                message: 'Application name is required'
+            });
+        }
+        
+        const [result] = await pool.execute(`
+            INSERT INTO sa_applications (
+                application_name,
+                description,
+                application_URL,
+                parm_email,
+                parm_username,
+                parm_PKCE,
+                status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [
+            application_name,
+            description || null,
+            application_URL || null,
+            parm_email,
+            parm_username,
+            parm_PKCE,
+            status
+        ]);
+        
+        res.status(201).json({
+            success: true,
+            message: 'Application created successfully',
+            data: {
+                application_id: result.insertId,
+                application_name,
+                description,
+                application_URL,
+                parm_email,
+                parm_username,
+                parm_PKCE,
+                status
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error creating application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create application',
+            error: error.message
+        });
+    }
+});
+
+// Update application
+app.put('/api/applications/:id', async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.id);
+        
+        if (isNaN(applicationId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid application ID'
+            });
+        }
+        
+        const {
+            application_name,
+            description,
+            application_URL,
+            parm_email,
+            parm_username,
+            parm_PKCE,
+            status
+        } = req.body;
+        
+        if (!application_name) {
+            return res.status(400).json({
+                success: false,
+                message: 'Application name is required'
+            });
+        }
+        
+        const [result] = await pool.execute(`
+            UPDATE sa_applications 
+            SET 
+                application_name = ?,
+                description = ?,
+                application_URL = ?,
+                parm_email = ?,
+                parm_username = ?,
+                parm_PKCE = ?,
+                status = ?,
+                date_updated = CURRENT_TIMESTAMP
+            WHERE application_id = ?
+        `, [
+            application_name,
+            description || null,
+            application_URL || null,
+            parm_email || 'No',
+            parm_username || 'No',
+            parm_PKCE || 'No',
+            status || 'Inactive',
+            applicationId
+        ]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'Application updated successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error updating application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update application',
+            error: error.message
+        });
+    }
+});
+
+// Delete application
+app.delete('/api/applications/:id', async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.id);
+        
+        if (isNaN(applicationId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid application ID'
+            });
+        }
+        
+        const [result] = await pool.execute(
+            'DELETE FROM sa_applications WHERE application_id = ?',
+            [applicationId]
+        );
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'Application deleted successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error deleting application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete application',
+            error: error.message
+        });
+    }
+});
+
+// Get users assigned to application
+app.get('/api/app-users/:applicationId', adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.applicationId);
+        
+        if (isNaN(applicationId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid application ID'
+            });
+        }
+        
+        const [rows] = await pool.execute(`
+            SELECT 
+                au.application_id,
+                au.user_id,
+                au.status,
+                au.start_date,
+                au.end_date,
+                au.track_user,
+                au.date_created,
+                au.date_updated,
+                u.first_name,
+                u.last_name,
+                u.username,
+                u.email
+            FROM sa_app_user au
+            JOIN sa_users u ON au.user_id = u.user_id
+            WHERE au.application_id = ?
+            ORDER BY u.first_name, u.last_name
+        `, [applicationId]);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+        
+    } catch (error) {
+        console.error('Error fetching application users:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch application users',
+            error: error.message
+        });
+    }
+});
+
+// Assign user to application
+app.post('/api/app-users', adminAccess, async (req, res) => {
+    try {
+        const {
+            application_id,
+            user_id,
+            status = 'Inactive',
+            start_date,
+            end_date,
+            track_user = 'No'
+        } = req.body;
+        
+        if (!application_id || !user_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'Application ID and User ID are required'
+            });
+        }
+        
+        // Check if assignment already exists
+        const [existing] = await pool.execute(
+            'SELECT * FROM sa_app_user WHERE application_id = ? AND user_id = ?',
+            [application_id, user_id]
+        );
+        
+        if (existing.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: 'User is already assigned to this application'
+            });
+        }
+        
+        const [result] = await pool.execute(`
+            INSERT INTO sa_app_user (
+                application_id,
+                user_id,
+                status,
+                start_date,
+                end_date,
+                track_user
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        `, [
+            application_id,
+            user_id,
+            status,
+            start_date || null,
+            end_date || null,
+            track_user
+        ]);
+        
+        res.status(201).json({
+            success: true,
+            message: 'User assigned to application successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error assigning user to application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to assign user to application',
+            error: error.message
+        });
+    }
+});
+
+// Update user assignment
+app.put('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.applicationId);
+        const userId = parseInt(req.params.userId);
+        
+        if (isNaN(applicationId) || isNaN(userId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid application ID or user ID'
+            });
+        }
+        
+        const {
+            status,
+            start_date,
+            end_date,
+            track_user
+        } = req.body;
+        
+        const [result] = await pool.execute(`
+            UPDATE sa_app_user 
+            SET 
+                status = ?,
+                start_date = ?,
+                end_date = ?,
+                track_user = ?,
+                date_updated = CURRENT_TIMESTAMP
+            WHERE application_id = ? AND user_id = ?
+        `, [
+            status || 'Inactive',
+            start_date || null,
+            end_date || null,
+            track_user || 'No',
+            applicationId,
+            userId
+        ]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User assignment not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'User assignment updated successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error updating user assignment:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update user assignment',
+            error: error.message
+        });
+    }
+});
+
+// Remove user from application
+app.delete('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.applicationId);
+        const userId = parseInt(req.params.userId);
+        
+        if (isNaN(applicationId) || isNaN(userId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid application ID or user ID'
+            });
+        }
+        
+        const [result] = await pool.execute(
+            'DELETE FROM sa_app_user WHERE application_id = ? AND user_id = ?',
+            [applicationId, userId]
+        );
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User assignment not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'User removed from application successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error removing user from application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to remove user from application',
+            error: error.message
+        });
+    }
+});
+
+// Verify admin access endpoint
+app.post('/api/auth/verify-admin', (req, res) => {
+    res.json({
+        success: true,
+        user: {
+            username: 'admin',
+            role: 'Admin'
+        }
+    });
+});
+
 // Login endpoint (for authentication)
 app.post('/api/auth/login', async (req, res) => {
     try {
@@ -885,6 +1676,18 @@ app.post('/api/auth/login', async (req, res) => {
         
         console.log(`✅ Login successful for user: ${username}`);
         
+        // Create session for all users
+        const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        activeSessions.set(sessionId, {
+            userId: user.user_id,
+            username: user.username,
+            role: user.role,
+            createdAt: new Date()
+        });
+        
+        // Store session ID in appropriate localStorage key based on role
+        const sessionKey = user.role === 'Admin' ? 'adminSessionId' : 'userSessionId';
+        
         // Return user info (excluding sensitive data)
         const { master_password_hash, ...userInfo } = user;
         
@@ -893,7 +1696,8 @@ app.post('/api/auth/login', async (req, res) => {
             message: 'Login successful',
             data: {
                 user: userInfo,
-                token: 'dummy-token-for-demo' // In production, generate proper JWT token
+                sessionId: sessionId,
+                token: 'dummy-token-for-demo'
             }
         });
         
@@ -902,6 +1706,191 @@ app.post('/api/auth/login', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Login failed',
+            error: error.message
+        });
+    }
+});
+
+// Get all tracking records
+app.get('/api/track-user', adminAccess, async (req, res) => {
+    try {
+        const [rows] = await pool.execute(`
+            SELECT 
+                t.track_id,
+                t.user_id,
+                t.application_id,
+                t.event_date,
+                t.computer_name,
+                t.computer_MAC,
+                t.computer_ip,
+                a.application_name,
+                u.username,
+                u.first_name,
+                u.last_name
+            FROM sa_tracking_user t
+            JOIN sa_applications a ON t.application_id = a.application_id
+            JOIN sa_users u ON t.user_id = u.user_id
+            ORDER BY t.event_date DESC
+        `);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+        
+    } catch (error) {
+        console.error('Error fetching tracking records:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch tracking records',
+            error: error.message
+        });
+    }
+});
+
+// Create tracking record
+app.post('/api/track-user', userAccess, async (req, res) => {
+    try {
+        const {
+            user_id,
+            application_id,
+            event_date,
+            computer_name,
+            computer_MAC,
+            computer_ip
+        } = req.body;
+        
+        if (!user_id || !application_id) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID and Application ID are required'
+            });
+        }
+        
+        // Convert ISO string to MySQL datetime format
+        let mysqlDateTime = null;
+        if (event_date) {
+            const date = new Date(event_date);
+            mysqlDateTime = date.toISOString().slice(0, 19).replace('T', ' ');
+        }
+        
+        const [result] = await pool.execute(`
+            INSERT INTO sa_tracking_user (
+                user_id,
+                application_id,
+                event_date,
+                computer_name,
+                computer_MAC,
+                computer_ip
+            ) VALUES (?, ?, ?, ?, ?, ?)
+        `, [
+            user_id,
+            application_id,
+            mysqlDateTime,
+            computer_name || null,
+            computer_MAC || null,
+            computer_ip || null
+        ]);
+        
+        res.status(201).json({
+            success: true,
+            message: 'Tracking record created successfully',
+            data: {
+                track_id: result.insertId
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error creating tracking record:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create tracking record',
+            error: error.message
+        });
+    }
+});
+
+// Get tracking records for specific user
+app.get('/api/track-user/user/:userId', adminAccess, async (req, res) => {
+    try {
+        const userId = parseInt(req.params.userId);
+        
+        if (isNaN(userId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID'
+            });
+        }
+        
+        const [rows] = await pool.execute(`
+            SELECT 
+                t.track_id,
+                t.application_id,
+                t.event_date,
+                t.computer_name,
+                t.computer_MAC,
+                t.computer_ip,
+                a.application_name
+            FROM sa_tracking_user t
+            JOIN sa_applications a ON t.application_id = a.application_id
+            WHERE t.user_id = ?
+            ORDER BY t.event_date DESC
+        `, [userId]);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+        
+    } catch (error) {
+        console.error('Error fetching user tracking records:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch user tracking records',
+            error: error.message
+        });
+    }
+});
+
+// Get tracking records for specific application
+app.get('/api/track-user/application/:applicationId', adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.applicationId);
+        
+        if (isNaN(applicationId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid application ID'
+            });
+        }
+        
+        const [rows] = await pool.execute(`
+            SELECT 
+                t.track_id,
+                t.user_id,
+                t.event_date,
+                t.computer_name,
+                t.computer_MAC,
+                t.computer_ip,
+                u.username,
+                u.first_name,
+                u.last_name
+            FROM sa_tracking_user t
+            JOIN sa_users u ON t.user_id = u.user_id
+            WHERE t.application_id = ?
+            ORDER BY t.event_date DESC
+        `, [applicationId]);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+        
+    } catch (error) {
+        console.error('Error fetching application tracking records:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch application tracking records',
             error: error.message
         });
     }
@@ -932,7 +1921,7 @@ async function startServer() {
         
         app.listen(PORT, () => {
             console.log(`🚀 Server running on http://localhost:${PORT}`);
-            console.log(`📊 Admin page: http://localhost:${PORT}/admin-page.html`);
+            console.log(`📊 Admin page: http://localhost:${PORT}/admin-users.html`);
             console.log(`🏥 Health check: http://localhost:${PORT}/health`);
         });
         

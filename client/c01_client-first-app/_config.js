@@ -1,6 +1,6 @@
 var _CONFIG =
-{ "IODD_VERSION":   "2.02"
-, "CLIENT_PATH":    "http://localhost:54332/client3/c32_iodd-app"
+{ "SA_VERSION":   "2.02"
+, "CLIENT_PATH":    "http://localhost:54332/client/c01_client-first-app"
 , "SERVER_API_URL": "http://localhost:54382/api2"
 , "SECURE_PATH":    "http://localhost:55301"
 , "SECURE_API_URL": "http://localhost:55351/api"

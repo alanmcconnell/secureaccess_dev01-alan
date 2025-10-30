@@ -20,3 +20,8 @@ All changes were made to the backend server files , not the client files. You'll
 
 
 taskkill /f /im node.exe
+
+######################
+Start server:
+node server_v1.08.js
+

@@ -9,6 +9,7 @@ const {
   deleteUser,
   getUserSecurity
 } = require('../controllers/usersController');
+const { getUserApplications } = require('../controllers/applicationsController');
 const { authenticateToken, authorize, generalRateLimit } = require('../middleware/auth');
 
 // Apply rate limiting to all user routes
@@ -22,6 +23,9 @@ router.get('/me', authenticateToken, authorize(['Admin', 'User']), getUserById);
 
 // PUT /api/users/me - Update own profile (requires authentication)
 router.put('/me', authenticateToken, authorize(['Admin', 'User']), updateUser);
+
+// GET /api/users/applications - Get user applications (requires authentication)
+router.get('/applications', authenticateToken, authorize(['Admin', 'User']), getUserApplications);
 
 // GET /api/users/:id - Get user by ID (requires authentication)
 router.get('/:id', authenticateToken, getUserById);

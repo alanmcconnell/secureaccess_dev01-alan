@@ -135,8 +135,37 @@ const createApplication = async (req, res) => {
   }
 };
 
+// Get user applications
+const getUserApplications = async (req, res) => {
+  try {
+    const userId = req.user.user_id;
+    
+    const [rows] = await pool.execute(`
+      SELECT a.application_id, a.application_name, a.application_URL, a.description
+      FROM sa_applications a
+      INNER JOIN sa_app_user au ON a.application_id = au.application_id
+      WHERE au.user_id = ?
+      ORDER BY a.application_name
+    `, [userId]);
+    
+    res.json({
+      success: true,
+      data: rows
+    });
+    
+  } catch (error) {
+    console.error('Error fetching user applications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch user applications',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getApplicationById,
   getAllApplications,
-  createApplication
+  createApplication,
+  getUserApplications
 };

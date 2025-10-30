@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>SecureAccess - Login Failed</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            font-size: 14px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.97);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            padding: 30px;
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #dc3545, #c82333);
+        }
+
+        .icon {
+            font-size: 48px;
+            color: #dc3545;
+            margin-bottom: 20px;
+        }
+
+        .logo {
+            margin-bottom: 25px;
+        }
+
+        .logo h1 {
+            color: #333;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .logo p {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .message {
+            margin-bottom: 30px;
+        }
+
+        .message h2 {
+            color: #dc3545;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        .message p {
+            color: #555;
+            font-size: 16px;
+            line-height: 1.5;
+            margin-bottom: 10px;
+        }
+
+        .security-info {
+            background: #f8f9fa;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: left;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .security-info h3 {
+            color: #dc3545;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .security-info ul {
+            color: #666;
+            font-size: 13px;
+            line-height: 1.4;
+            margin-left: 15px;
+        }
+
+        .security-info li {
+            margin-bottom: 5px;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-bottom: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-1px);
+        }
+
+        .footer {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #e1e5e9;
+            color: #666;
+            font-size: 12px;
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 400px) {
+            body {
+                padding: 4px;
+            }
+
+            .container {
+                padding: 20px;
+                max-width: 100%;
+            }
+
+            .icon {
+                font-size: 36px;
+            }
+
+            .logo h1 {
+                font-size: 20px;
+            }
+
+            .message h2 {
+                font-size: 18px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🚫</div>
+        
+        <div class="logo">
+            <h1>SecureAccess</h1>
+            <p>Secure Website Authentication</p>
+        </div>
+
+        <div class="message">
+            <h2>Login Access Blocked</h2>
+            <p>Your account has been temporarily locked due to multiple failed login attempts.</p>
+            <p>This security measure helps protect your account from unauthorized access.</p>
+        </div>
+
+        <div class="security-info">
+            <h3>Security Information:</h3>
+            <ul>
+                <li>Maximum of 3 login attempts allowed</li>
+                <li>Account locked after exceeding attempt limit</li>
+                <li>Contact your administrator to unlock your account</li>
+                <li>Ensure you are using the correct username and password</li>
+            </ul>
+        </div>
+
+        <button class="btn btn-primary" onclick="tryAgain()">Try Login Again</button>
+
+        <div class="footer">
+            <p>If you believe this is an error, please contact your system administrator.</p>
+        </div>
+    </div>
+
+    <script>
+        function tryAgain() {
+            // Get URL parameters to preserve app_key and redirect if they exist
+            const urlParams = new URLSearchParams(window.location.search);
+            const appKey = urlParams.get('app_key');
+            const redirect = urlParams.get('redirect');
+            
+            let loginUrl = 'login_client.html';
+            const params = new URLSearchParams();
+            
+            if (appKey) {
+                params.append('app_key', appKey);
+            }
+            if (redirect) {
+                params.append('redirect', redirect);
+            }
+            
+            if (params.toString()) {
+                loginUrl += '?' + params.toString();
+            }
+            
+            window.location.href = loginUrl;
+        }
+
+
+
+        // Auto-redirect after 30 seconds
+        setTimeout(() => {
+            const countdown = document.createElement('p');
+            countdown.style.color = '#666';
+            countdown.style.fontSize = '12px';
+            countdown.style.marginTop = '10px';
+            countdown.textContent = 'Redirecting to login page in 30 seconds...';
+            document.querySelector('.footer').appendChild(countdown);
+            
+            setTimeout(() => {
+                tryAgain();
+            }, 30000);
+        }, 1000);
+    </script>
+</body>
+</html>

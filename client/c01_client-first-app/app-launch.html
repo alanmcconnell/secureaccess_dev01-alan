@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureAccess - Application Launcher</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.97);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
+            min-height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 1px solid #e1e5e9;
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .app-grid {
+            flex: 1;
+            border: 1px solid #e1e5e9;
+            border-radius: 8px;
+            background: white;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        .app-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 16px;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .info-icon {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .info-icon:hover {
+            background: #0056b3;
+        }
+
+        .app-item:hover {
+            background: #f8f9fa;
+        }
+
+        .app-item:last-child {
+            border-bottom: none;
+        }
+
+        .no-apps {
+            padding: 40px 20px;
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+
+        .loading {
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        .spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 150px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .alert {
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 0;
+                border-radius: 0;
+                min-height: 100vh;
+            }
+
+            .action-buttons {
+                flex-direction: column;
+            }
+
+            .btn {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Application Launcher</h1>
+            <p>Select an application to launch</p>
+        </div>
+
+        <div class="main-content">
+            <div class="alert" id="alert"></div>
+
+            <div class="app-grid" id="appGrid">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading applications...</p>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn btn-secondary" onclick="returnToLogin()">Return to Login</button>
+                <button class="btn btn-success" id="roleButton" style="display: none;"></button>
+            </div>
+        </div>
+    </div>
+
+    <script src="./_config.js"></script>
+    <script src="shared-functions.js"></script>
+    <script src="../../lib/acm_Prompts.js"></script>
+    <script src="pkce-utils.js"></script>
+    <script>
+        let API_BASE_URL = window.fvaRs.SECURE_API_URL;
+        let currentUser = null;
+        let applications = [];
+
+        // Helper functions
+        async function redirectToLogin(message) {
+            if (message) {
+                if (typeof acm_SecurePopUp === 'function') {
+                    await acm_SecurePopUp(message, "OK:ok");
+                } else {
+                    alert(message);
+                }
+            }
+            window.location.href = 'login_client.html';
+        }
+
+        function showAlert(message) {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.classList.add('show');
+        }
+
+        // API call with JWT authentication
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            const sessionId = localStorage.getItem('adminSessionId') || localStorage.getItem('userSessionId');
+            
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${sessionId}`
+                },
+                credentials: 'include'
+            };
+
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        redirectToLogin('Session expired. Please login again.');
+                        return;
+                    } else if (response.status === 403) {
+                        redirectToLogin('Access denied.');
+                        return;
+                    }
+                    
+                    let errorMessage = `HTTP error! status: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.message || errorMessage;
+                    } catch (e) {
+                        // If response is not JSON, use default error message
+                    }
+                    throw new Error(errorMessage);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                
+                if (error.message.includes('fetch')) {
+                    throw new Error('Cannot connect to server. Please check if the server is running.');
+                }
+                
+                throw error;
+            }
+        }
+
+
+
+        // Load user applications
+        async function loadApplications() {
+            try {
+                const result = await apiCall('/user-applications');
+                applications = result.data || result || [];
+                
+                renderApplications();
+                
+            } catch (error) {
+                console.error('Error loading applications:', error);
+                showAlert('Failed to load applications: ' + error.message);
+                document.getElementById('appGrid').innerHTML = '<div class="no-apps">No applications available</div>';
+            }
+        }
+
+        // Show application description
+        async function showDescription(appId, event) {
+            event.stopPropagation();
+            try {
+                const appResult = await apiCall(`/applications/${appId}`);
+                const app = appResult.data || appResult;
+                const description = app.description || 'No description available';
+                
+                console.log('acm_SecurePopUp available:', typeof acm_SecurePopUp);
+                if (typeof acm_SecurePopUp === 'function') {
+                    await acm_SecurePopUp(description, "OK:ok");
+                } else {
+                    console.log('acm_SecurePopUp not found, using alert');
+                    alert(description);
+                }
+            } catch (error) {
+                console.error('Error in showDescription:', error);
+                if (typeof acm_SecurePopUp === 'function') {
+                    await acm_SecurePopUp('No description available', "OK:ok");
+                } else {
+                    alert('No description available');
+                }
+            }
+        }
+
+        // Render applications in grid
+        function renderApplications() {
+            const appGrid = document.getElementById('appGrid');
+            
+            if (applications.length === 0) {
+                appGrid.innerHTML = '<div class="no-apps">No applications available</div>';
+                return;
+            }
+
+            const appHTML = applications.map(app => `
+                <div class="app-item" onclick="launchApplication('${app.application_name}', ${app.application_id})">
+                    <span>${app.application_name}</span>
+                    <span class="info-icon" onclick="showDescription(${app.application_id}, event)" title="Show description">?</span>
+                </div>
+            `).join('');
+            
+            appGrid.innerHTML = appHTML;
+        }
+
+        // Generate production-ready PKCE parameters
+        async function generatePKCEToken() {
+            try {
+                const pkce = await PKCEUtils.generatePKCE();
+                const state = PKCEUtils.generateState();
+                
+                // Store PKCE session for validation
+                const sessionId = PKCEUtils.storePKCESession({
+                    codeVerifier: pkce.codeVerifier,
+                    codeChallenge: pkce.codeChallenge,
+                    state: state,
+                    applicationId: currentUser?.user_id || 'unknown'
+                });
+                
+                return {
+                    code_challenge: pkce.codeChallenge,
+                    code_challenge_method: pkce.codeChallengeMethod,
+                    state: state,
+                    session_id: sessionId
+                };
+            } catch (error) {
+                console.error('PKCE generation failed:', error);
+                // Fallback to basic token for compatibility
+                return {
+                    pkce_token: PKCEUtils.generateState()
+                };
+            }
+        }
+
+        // Get computer information
+        async function getComputerInfo() {
+            try {
+                const result = await apiCall('/computer-info');
+                return result.data || {
+                    computer_name: navigator.platform || 'Unknown',
+                    computer_ip: 'Unknown',
+                    computer_MAC: 'Unknown'
+                };
+            } catch (error) {
+                console.warn('Failed to get computer info from server:', error);
+                return {
+                    computer_name: navigator.platform || 'Unknown',
+                    computer_ip: 'Unknown',
+                    computer_MAC: 'Unknown'
+                };
+            }
+        }
+
+        // Launch application
+        async function launchApplication(appName, appId) {
+            try {
+                // Get computer information and track usage
+                const computerInfo = await getComputerInfo();
+                await apiCall('/track-user', 'POST', { 
+                    application_id: appId,
+                    computer_name: computerInfo.computer_name,
+                    computer_MAC: computerInfo.computer_MAC,
+                    computer_ip: computerInfo.computer_ip
+                });
+                
+                // Get application details from sa_applications table
+                const appResult = await apiCall(`/applications/${appId}`);
+                const app = appResult.data || appResult;
+                
+                if (!app || !app.application_URL) {
+                    showAlert('Application URL not found');
+                    return;
+                }
+                
+                let url = app.application_URL;
+                const params = new URLSearchParams();
+                
+                if (app.parm_PKCE === 'Yes') {
+                    // Pass user data in PKCE token
+                    const userData = {};
+                    if (app.parm_email === 'Yes' && currentUser.email) {
+                        userData.email = currentUser.email;
+                    }
+                    if (app.parm_username === 'Yes' && currentUser.username) {
+                        userData.username = currentUser.username;
+                    }
+                    
+                    const pkce = await PKCEUtils.generatePKCE();
+                    const sessionId = PKCEUtils.storePKCESession({
+                        codeVerifier: pkce.codeVerifier,
+                        codeChallenge: pkce.codeChallenge,
+                        state: PKCEUtils.generateState()
+                    }, userData);
+                    
+                    params.append('code_challenge', pkce.codeChallenge);
+                    params.append('code_challenge_method', pkce.codeChallengeMethod);
+                    params.append('state', PKCEUtils.generateState());
+                    params.append('session_id', sessionId);
+                } else {
+                    // Pass user data as URL parameters
+                    if (app.parm_email === 'Yes' && currentUser.email) {
+                        params.append('email', currentUser.email);
+                    }
+                    if (app.parm_username === 'Yes' && currentUser.username) {
+                        params.append('username', currentUser.username);
+                    }
+                }
+                
+                // Add parameters to URL if any exist
+                if (params.toString()) {
+                    url += (url.includes('?') ? '&' : '?') + params.toString();
+                }
+                
+                // Open application in new tab
+                window.open(url, '_blank');
+                
+            } catch (error) {
+                console.error('Error launching application:', error);
+                showAlert('Failed to launch application: ' + error.message);
+            }
+        }
+
+        // Navigation functions
+        function returnToLogin() {
+            // Clear session data
+            localStorage.removeItem('adminSessionId');
+            localStorage.removeItem('userSessionId');
+            window.location.href = 'login_client.html';
+        }
+
+        function goToProfile() {
+            window.location.href = 'profile-page.html';
+        }
+
+        function goToAdmin() {
+            window.location.href = 'admin-page.html';
+        }
+
+
+
+        // Initialize page
+        async function initializePage() {
+            // Get user data from PKCE session if available
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionId = urlParams.get('session');
+            
+            if (sessionId) {
+                const pkceSession = PKCEUtils.getPKCESession(sessionId);
+                if (pkceSession && pkceSession.userData) {
+                    currentUser = pkceSession.userData;
+                    console.log('User data from PKCE session:', currentUser);
+                }
+            }
+            
+            // Fallback to server verification if no PKCE session
+            if (!currentUser) {
+                console.log('Checking authentication...');
+                const adminSessionId = localStorage.getItem('adminSessionId');
+                const userSessionId = localStorage.getItem('userSessionId');
+                console.log('Admin session:', adminSessionId);
+                console.log('User session:', userSessionId);
+                
+                try {
+                    const result = await apiCall('/auth/verify');
+                    if (result.success) {
+                        currentUser = result.data;
+                        console.log('User authenticated:', currentUser);
+                    } else {
+                        redirectToLogin('Authentication failed. Please login again.');
+                        return;
+                    }
+                } catch (error) {
+                    console.log('Authentication check failed:', error.message);
+                    redirectToLogin('Session expired. Please login again.');
+                    return;
+                }
+            }
+
+            // Setup role-specific button
+            const roleButton = document.getElementById('roleButton');
+            
+            if (currentUser && currentUser.role === 'Admin') {
+                roleButton.textContent = 'Admin Tools';
+                roleButton.onclick = goToAdmin;
+                roleButton.style.display = 'block';
+            } else if (currentUser && currentUser.role === 'User') {
+                roleButton.textContent = 'Manage Your Profile';
+                roleButton.onclick = goToProfile;
+                roleButton.style.display = 'block';
+            }
+
+            // Load applications
+            await loadApplications();
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            // Small delay to ensure localStorage is set from previous page
+            setTimeout(initializePage, 100);
+        });
+    </script>
+</body>
+</html>

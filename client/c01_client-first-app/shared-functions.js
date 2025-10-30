@@ -140,6 +140,18 @@ window.SA_InitializePage = function() {
     return true;
 };
 
+// Shared PKCE token creation function
+window.createPKCEToken = function(currentUser, accessResult = null) {
+    if (!currentUser) {
+        throw new Error('Current user is required for PKCE token creation');
+    }
+    return PKCEUtils.generateCodeVerifier({
+        username: currentUser.username,
+        email: currentUser.email,
+        app_role: accessResult?.app_role || 'NULL'
+    });
+};
+
 // Export for use in other scripts
 window.AuthManager = AuthManager;
 window.CSRFManager = CSRFManager;
