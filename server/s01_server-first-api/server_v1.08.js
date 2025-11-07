@@ -3,6 +3,9 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcrypt');
 const cors = require('cors');
 const path = require('path');
+const crypto = require('crypto');
+const validator = require('validator');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 55351;
@@ -11,10 +14,33 @@ const PORT = process.env.PORT || 55351;
 app.use(cors({
     origin: ['http://localhost:55351', 'http://127.0.0.1:55301', 'http://localhost:55301'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id', 'x-session-id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Id', 'x-session-id', 'x-requested-with', 'x-csrf-token'],
     credentials: true
 }));
-app.use(express.json());
+
+// Security headers middleware
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
+    next();
+});
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Input sanitization middleware
+function sanitizeInput(req, res, next) {
+    if (req.body) {
+        for (const key in req.body) {
+            if (typeof req.body[key] === 'string') {
+                req.body[key] = validator.escape(req.body[key]);
+            }
+        }
+    }
+    next();
+}
 app.use(express.static(path.join(__dirname, '../../client/c01_client-first-app'))); // Serve static files
 
 // Request logging middleware
@@ -26,12 +52,69 @@ app.use((req, res, next) => {
 // Simple session store
 const activeSessions = new Map();
 
+// CSRF token store
+const csrfTokens = new Map();
+
+// Rate limiting store
+const loginAttempts = new Map();
+
+// Rate limiting middleware
+function rateLimitLogin(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    const windowMs = 15 * 60 * 1000; // 15 minutes
+    const maxAttempts = 5;
+    
+    if (!loginAttempts.has(ip)) {
+        loginAttempts.set(ip, { count: 0, resetTime: now + windowMs });
+    }
+    
+    const attempts = loginAttempts.get(ip);
+    
+    if (now > attempts.resetTime) {
+        attempts.count = 0;
+        attempts.resetTime = now + windowMs;
+    }
+    
+    if (attempts.count >= maxAttempts) {
+        return res.status(429).json({
+            success: false,
+            message: 'Too many login attempts. Please try again later.'
+        });
+    }
+    
+    attempts.count++;
+    next();
+}
+
+// Generate CSRF token
+function generateCSRFToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+// CSRF protection middleware
+function csrfProtection(req, res, next) {
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+        return next();
+    }
+    
+    const token = req.headers['x-csrf-token'] || req.body._csrf;
+    const sessionId = req.headers['authorization']?.replace('Bearer ', '');
+    
+    if (!token || !sessionId || !csrfTokens.has(sessionId) || csrfTokens.get(sessionId) !== token) {
+        return res.status(403).json({
+            success: false,
+            message: 'Invalid CSRF token'
+        });
+    }
+    
+    next();
+}
+
 // Admin access middleware
 function adminAccess(req, res, next) {
     const authHeader = req.headers['authorization'];
     const sessionId = authHeader ? authHeader.replace('Bearer ', '') : null;
-    
-    console.log('🔍 Auth check:', { authHeader, sessionId, activeSessions: Array.from(activeSessions.keys()) });
     
     if (!sessionId || !activeSessions.has(sessionId)) {
         return res.status(401).json({
@@ -41,13 +124,24 @@ function adminAccess(req, res, next) {
     }
     
     const session = activeSessions.get(sessionId);
-    if (session.role !== 'Admin') {
+    if (!session || session.role !== 'Admin') {
         return res.status(403).json({
             success: false,
             message: 'Admin access required'
         });
     }
     
+    // Check session expiration (1 hour)
+    if (Date.now() - session.createdAt.getTime() > 3600000) {
+        activeSessions.delete(sessionId);
+        csrfTokens.delete(sessionId);
+        return res.status(401).json({
+            success: false,
+            message: 'Session expired'
+        });
+    }
+    
+    req.user = session;
     next();
 }
 
@@ -56,10 +150,7 @@ function userAccess(req, res, next) {
     const authHeader = req.headers['authorization'];
     const sessionId = authHeader ? authHeader.replace('Bearer ', '') : null;
     
-    console.log('🔍 User auth check:', { authHeader, sessionId, activeSessions: Array.from(activeSessions.keys()) });
-    
     if (!sessionId || !activeSessions.has(sessionId)) {
-        console.log('❌ User auth failed: session not found');
         return res.status(401).json({
             success: false,
             message: 'Authentication required'
@@ -67,18 +158,34 @@ function userAccess(req, res, next) {
     }
     
     const session = activeSessions.get(sessionId);
-    console.log('✅ User auth success:', { userId: session.userId, role: session.role });
-    req.user = session; // Add user info to request
+    if (!session) {
+        return res.status(401).json({
+            success: false,
+            message: 'Invalid session'
+        });
+    }
+    
+    // Check session expiration (1 hour)
+    if (Date.now() - session.createdAt.getTime() > 3600000) {
+        activeSessions.delete(sessionId);
+        csrfTokens.delete(sessionId);
+        return res.status(401).json({
+            success: false,
+            message: 'Session expired'
+        });
+    }
+    
+    req.user = session;
     next();
 }
 
 // Database configuration
 const dbConfig = {
-    host: '92.112.184.206',
-    port: 3306,
-    user: 'nimdas',
-    password: 'FormR!1234',
-    database: 'secureaccess2',
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 3306,
+    user: process.env.DB_USER || 'user',
+    password: process.env.DB_PASSWORD || 'password',
+    database: process.env.DB_NAME || 'secureaccess2',
     timezone: 'Z'
 };
 
@@ -87,6 +194,10 @@ let pool;
 
 async function initDatabase() {
     try {
+        if (!dbConfig.host || !dbConfig.user || !dbConfig.password) {
+            throw new Error('Database configuration incomplete. Please set DB_HOST, DB_USER, and DB_PASSWORD environment variables.');
+        }
+        
         pool = mysql.createPool({
             ...dbConfig,
             waitForConnections: true,
@@ -103,7 +214,8 @@ async function initDatabase() {
         await ensureTableExists();
         
     } catch (error) {
-        console.error('❌ Database connection failed:', error.message);
+        const errorMessage = error && error.message ? error.message : 'Unknown database connection error';
+        console.error('❌ Database connection failed:', errorMessage);
         process.exit(1);
     }
 }
@@ -142,7 +254,7 @@ async function ensureTableExists() {
                 application_id INT AUTO_INCREMENT PRIMARY KEY,
                 application_name VARCHAR(100) NOT NULL,
                 description TEXT,
-                application_URL VARCHAR(255),
+                redirect_URL VARCHAR(255),
                 parm_email ENUM('Yes', 'No') DEFAULT 'No',
                 parm_username ENUM('Yes', 'No') DEFAULT 'No',
                 parm_PKCE ENUM('Yes', 'No') DEFAULT 'No',
@@ -224,6 +336,42 @@ async function ensureTableExists() {
                 console.log('✅ track_user column already exists');
             } else {
                 console.error('❌ Error adding track_user column:', error.message);
+            }
+        }
+        
+        // Add app_role column to sa_app_user if it doesn't exist
+        try {
+            await pool.execute('ALTER TABLE sa_app_user ADD COLUMN app_role VARCHAR(100) NULL');
+            console.log('✅ Added app_role column to sa_app_user table');
+        } catch (error) {
+            if (error.code === 'ER_DUP_FIELDNAME') {
+                console.log('✅ app_role column already exists');
+            } else {
+                console.error('❌ Error adding app_role column:', error.message);
+            }
+        }
+        
+        // Add security_roles column to sa_applications if it doesn't exist
+        try {
+            await pool.execute('ALTER TABLE sa_applications ADD COLUMN security_roles VARCHAR(500) NULL');
+            console.log('✅ Added security_roles column to sa_applications table');
+        } catch (error) {
+            if (error.code === 'ER_DUP_FIELDNAME') {
+                console.log('✅ security_roles column already exists');
+            } else {
+                console.error('❌ Error adding security_roles column:', error.message);
+            }
+        }
+        
+        // Add app_key column to sa_applications if it doesn't exist
+        try {
+            await pool.execute('ALTER TABLE sa_applications ADD COLUMN app_key VARCHAR(50) UNIQUE NULL');
+            console.log('✅ Added app_key column to sa_applications table');
+        } catch (error) {
+            if (error.code === 'ER_DUP_FIELDNAME') {
+                console.log('✅ app_key column already exists');
+            } else {
+                console.error('❌ Error adding app_key column:', error.message);
             }
         }
         
@@ -313,7 +461,7 @@ app.get('/api/users/me', userAccess, async (req, res) => {
 });
 
 // Update current user profile (for regular users) - MOVED UP to avoid conflict with /api/users/:id
-app.put('/api/users/me', userAccess, async (req, res) => {
+app.put('/api/users/me', csrfProtection, userAccess, async (req, res) => {
     console.log('✅ PUT /api/users/me called with userAccess middleware');
     try {
         const userId = req.user.userId;
@@ -384,7 +532,14 @@ app.put('/api/users/me', userAccess, async (req, res) => {
         updates.push('updated_at = CURRENT_TIMESTAMP');
         values.push(userId);
         
-        const updateSQL = `UPDATE sa_users SET ${updates.join(', ')} WHERE user_id = ?`;
+        // Validate updates array contains only safe column assignments
+        const allowedColumns = ['first_name', 'last_name', 'username', 'email', 'master_password_hash', 'security_question_1', 'security_answer_1_hash', 'security_question_2', 'security_answer_2_hash', 'updated_at'];
+        const safeUpdates = updates.filter(update => {
+            const column = update.split(' = ')[0];
+            return allowedColumns.includes(column);
+        });
+        
+        const updateSQL = `UPDATE sa_users SET ${safeUpdates.join(', ')} WHERE user_id = ?`;
         
         const [updateResult] = await pool.execute(updateSQL, values);
         
@@ -420,6 +575,25 @@ app.put('/api/users/me', userAccess, async (req, res) => {
             error: error.message
         });
     }
+});
+
+// Get CSRF token
+app.get('/api/csrf-token', (req, res) => {
+    const sessionId = req.headers['authorization']?.replace('Bearer ', '');
+    if (!sessionId || !activeSessions.has(sessionId)) {
+        return res.status(401).json({
+            success: false,
+            message: 'Authentication required'
+        });
+    }
+    
+    const token = generateCSRFToken();
+    csrfTokens.set(sessionId, token);
+    
+    res.json({
+        success: true,
+        token: token
+    });
 });
 
 // Get all users
@@ -534,7 +708,7 @@ app.get('/api/users/:id', adminAccess, async (req, res) => {
 });
 
 // Create new user
-app.post('/api/users', adminAccess, async (req, res) => {
+app.post('/api/users', adminAccess, csrfProtection, async (req, res) => {
     try {
         const {
             first_name,
@@ -561,8 +735,7 @@ app.post('/api/users', adminAccess, async (req, res) => {
         }
         
         // Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
+        if (!validator.isEmail(email)) {
             return res.status(400).json({
                 success: false,
                 message: 'Invalid email format'
@@ -570,10 +743,23 @@ app.post('/api/users', adminAccess, async (req, res) => {
         }
         
         // Validate password strength
-        if (password.length < 8) {
+        if (!validator.isLength(password, { min: 8, max: 128 })) {
             return res.status(400).json({
                 success: false,
-                message: 'Password must be at least 8 characters long'
+                message: 'Password must be between 8 and 128 characters long'
+            });
+        }
+        
+        if (!validator.isStrongPassword(password, {
+            minLength: 8,
+            minLowercase: 1,
+            minUppercase: 1,
+            minNumbers: 1,
+            minSymbols: 1
+        })) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
             });
         }
         
@@ -666,7 +852,7 @@ app.post('/api/users', adminAccess, async (req, res) => {
 });
 
 // Update user - FIXED VERSION WITH ENHANCED LOGGING
-app.put('/api/users/:id', adminAccess, async (req, res) => {
+app.put('/api/users/:id', adminAccess, csrfProtection, async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         
@@ -802,7 +988,14 @@ app.put('/api/users/:id', adminAccess, async (req, res) => {
         updates.push('updated_at = CURRENT_TIMESTAMP');
         values.push(userId);
         
-        const updateSQL = `UPDATE sa_users SET ${updates.join(', ')} WHERE user_id = ?`;
+        // Validate updates array contains only safe column assignments
+        const allowedColumns = ['first_name', 'last_name', 'username', 'email', 'master_password_hash', 'security_question_1', 'security_answer_1_hash', 'security_question_2', 'security_answer_2_hash', 'updated_at'];
+        const safeUpdates = updates.filter(update => {
+            const column = update.split(' = ')[0];
+            return allowedColumns.includes(column);
+        });
+        
+        const updateSQL = `UPDATE sa_users SET ${safeUpdates.join(', ')} WHERE user_id = ?`;
         
         console.log('🗃️ Executing SQL:', updateSQL);
         console.log('📊 With values:', values.map((v, i) => 
@@ -852,7 +1045,7 @@ app.put('/api/users/:id', adminAccess, async (req, res) => {
 });
 
 // Delete user and related records
-app.delete('/api/users/:id', adminAccess, async (req, res) => {
+app.delete('/api/users/:id', adminAccess, csrfProtection, async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         
@@ -916,7 +1109,7 @@ app.delete('/api/users/:id', adminAccess, async (req, res) => {
 
 
 // Reset password for a single user
-app.post('/api/admin/reset-single-password', adminAccess, async (req, res) => {
+app.post('/api/admin/reset-single-password', adminAccess, csrfProtection, async (req, res) => {
     try {
         const { username, newPassword } = req.body;
         
@@ -968,7 +1161,7 @@ app.post('/api/admin/reset-single-password', adminAccess, async (req, res) => {
 });
 
 // Bulk fix passwords for users with NULL password_hash
-app.post('/api/admin/fix-passwords', adminAccess, async (req, res) => {
+app.post('/api/admin/fix-passwords', adminAccess, csrfProtection, async (req, res) => {
     try {
         const { defaultPassword = 'password123' } = req.body;
         
@@ -1028,12 +1221,12 @@ app.get('/api/user-applications', userAccess, async (req, res) => {
         const userId = req.user.userId;
         
         const [rows] = await pool.execute(`
-            SELECT APP.application_name, APP.application_id, USR.user_id, AU.app_user_id 
-            FROM sa_applications APP, sa_users USR, sa_app_user AU
+            SELECT APP.application_name, APP.application_id, USR.user_id
+            FROM sa_applications APP
+            INNER JOIN sa_app_user AU ON AU.application_id = APP.application_id
+            INNER JOIN sa_users USR ON USR.user_id = AU.user_id
             WHERE 
                USR.user_id = ? AND 
-               USR.user_id = AU.user_id AND 
-               AU.application_id = APP.application_id AND 
                APP.status = 'Active' AND
                (AU.status = 'Active' OR (AU.status = 'Temp Use' AND AU.start_date <= CURDATE() AND AU.end_date >= CURDATE()))
             ORDER BY 
@@ -1050,6 +1243,31 @@ app.get('/api/user-applications', userAccess, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to fetch user applications',
+            error: error.message
+        });
+    }
+});
+
+// Logout endpoint
+app.post('/api/auth/logout', csrfProtection, userAccess, (req, res) => {
+    try {
+        const sessionId = req.headers['authorization']?.replace('Bearer ', '');
+        
+        if (sessionId) {
+            activeSessions.delete(sessionId);
+            csrfTokens.delete(sessionId);
+        }
+        
+        res.json({
+            success: true,
+            message: 'Logged out successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error during logout:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Logout failed',
             error: error.message
         });
     }
@@ -1072,6 +1290,47 @@ app.get('/api/auth/me', userAccess, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to fetch current user',
+            error: error.message
+        });
+    }
+});
+
+// Get current user's assignment to specific application
+app.get('/api/my-app-assignment/:applicationId', userAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.applicationId);
+        const userId = req.user.userId;
+        
+        if (isNaN(applicationId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid application ID'
+            });
+        }
+        
+        const [rows] = await pool.execute(`
+            SELECT 
+                au.application_id,
+                au.user_id,
+                au.app_role,
+                au.status,
+                au.start_date,
+                au.end_date,
+                au.track_user
+            FROM sa_app_user au
+            WHERE au.application_id = ? AND au.user_id = ?
+        `, [applicationId, userId]);
+        
+        res.json({
+            success: true,
+            data: rows[0] || null
+        });
+        
+    } catch (error) {
+        console.error('Error fetching user app assignment:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch user app assignment',
             error: error.message
         });
     }
@@ -1123,7 +1382,7 @@ app.get('/api/computer-info', userAccess, async (req, res) => {
 
 
 // Get all applications
-app.get('/api/applications', async (req, res) => {
+app.get('/api/applications', userAccess, async (req, res) => {
     try {
         console.log('🔍 GET /api/applications - Loading all applications...');
         
@@ -1132,11 +1391,13 @@ app.get('/api/applications', async (req, res) => {
                 application_id,
                 application_name,
                 description,
-                application_URL,
+                redirect_URL,
+                security_roles,
                 parm_email,
                 parm_username,
                 parm_PKCE,
                 status,
+                app_key,
                 app_run_count,
                 date_created,
                 date_updated
@@ -1161,8 +1422,53 @@ app.get('/api/applications', async (req, res) => {
     }
 });
 
+// Get application by app_key
+app.get('/api/applications/by-key/:appKey', async (req, res) => {
+    try {
+        const appKey = req.params.appKey;
+        
+        const [rows] = await pool.execute(`
+            SELECT 
+                application_id,
+                application_name,
+                description,
+                redirect_URL,
+                security_roles,
+                parm_email,
+                parm_username,
+                parm_PKCE,
+                status,
+                app_run_count,
+                date_created,
+                date_updated
+            FROM sa_applications 
+            WHERE app_key = ? AND status = 'Active'
+        `, [appKey]);
+        
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: rows[0]
+        });
+        
+    } catch (error) {
+        console.error('Error fetching application by key:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch application',
+            error: error.message
+        });
+    }
+});
+
 // Get specific application by ID
-app.get('/api/applications/:id', async (req, res) => {
+app.get('/api/applications/:id', userAccess, async (req, res) => {
     try {
         const applicationId = parseInt(req.params.id);
         
@@ -1178,11 +1484,13 @@ app.get('/api/applications/:id', async (req, res) => {
                 application_id,
                 application_name,
                 description,
-                application_URL,
+                redirect_URL,
+                security_roles,
                 parm_email,
                 parm_username,
                 parm_PKCE,
                 status,
+                app_key,
                 app_run_count,
                 date_created,
                 date_updated
@@ -1213,16 +1521,18 @@ app.get('/api/applications/:id', async (req, res) => {
 });
 
 // Create new application
-app.post('/api/applications', async (req, res) => {
+app.post('/api/applications', adminAccess, csrfProtection, async (req, res) => {
     try {
         const {
             application_name,
             description,
-            application_URL,
+            redirect_URL,
+            security_roles,
             parm_email = 'No',
             parm_username = 'No',
             parm_PKCE = 'No',
-            status = 'Inactive'
+            status = 'Inactive',
+            app_key
         } = req.body;
         
         if (!application_name) {
@@ -1236,20 +1546,24 @@ app.post('/api/applications', async (req, res) => {
             INSERT INTO sa_applications (
                 application_name,
                 description,
-                application_URL,
+                redirect_URL,
+                security_roles,
                 parm_email,
                 parm_username,
                 parm_PKCE,
-                status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                status,
+                app_key
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
             application_name,
             description || null,
-            application_URL || null,
+            redirect_URL || null,
+            security_roles || null,
             parm_email,
             parm_username,
             parm_PKCE,
-            status
+            status,
+            app_key || null
         ]);
         
         res.status(201).json({
@@ -1259,7 +1573,7 @@ app.post('/api/applications', async (req, res) => {
                 application_id: result.insertId,
                 application_name,
                 description,
-                application_URL,
+                redirect_URL,
                 parm_email,
                 parm_username,
                 parm_PKCE,
@@ -1278,7 +1592,7 @@ app.post('/api/applications', async (req, res) => {
 });
 
 // Update application
-app.put('/api/applications/:id', async (req, res) => {
+app.put('/api/applications/:id', adminAccess, csrfProtection, async (req, res) => {
     try {
         const applicationId = parseInt(req.params.id);
         
@@ -1292,11 +1606,13 @@ app.put('/api/applications/:id', async (req, res) => {
         const {
             application_name,
             description,
-            application_URL,
+            redirect_URL,
+            security_roles,
             parm_email,
             parm_username,
             parm_PKCE,
-            status
+            status,
+            app_key
         } = req.body;
         
         if (!application_name) {
@@ -1311,21 +1627,25 @@ app.put('/api/applications/:id', async (req, res) => {
             SET 
                 application_name = ?,
                 description = ?,
-                application_URL = ?,
+                redirect_URL = ?,
+                security_roles = ?,
                 parm_email = ?,
                 parm_username = ?,
                 parm_PKCE = ?,
                 status = ?,
+                app_key = ?,
                 date_updated = CURRENT_TIMESTAMP
             WHERE application_id = ?
         `, [
             application_name,
             description || null,
-            application_URL || null,
+            redirect_URL || null,
+            security_roles || null,
             parm_email || 'No',
             parm_username || 'No',
             parm_PKCE || 'No',
             status || 'Inactive',
+            app_key || null,
             applicationId
         ]);
         
@@ -1352,7 +1672,7 @@ app.put('/api/applications/:id', async (req, res) => {
 });
 
 // Delete application
-app.delete('/api/applications/:id', async (req, res) => {
+app.delete('/api/applications/:id', adminAccess, csrfProtection, async (req, res) => {
     try {
         const applicationId = parseInt(req.params.id);
         
@@ -1390,6 +1710,56 @@ app.delete('/api/applications/:id', async (req, res) => {
     }
 });
 
+// Get specific app-user assignment
+app.get('/api/app-users/:applicationId/:userId', userAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.applicationId);
+        const userId = parseInt(req.params.userId);
+        
+        if (isNaN(applicationId) || isNaN(userId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid application ID or user ID'
+            });
+        }
+        
+        const [rows] = await pool.execute(`
+            SELECT 
+                au.application_id,
+                au.user_id,
+                au.app_role,
+                au.status,
+                au.start_date,
+                au.end_date,
+                au.track_user,
+                au.date_created,
+                au.date_updated
+            FROM sa_app_user au
+            WHERE au.application_id = ? AND au.user_id = ?
+        `, [applicationId, userId]);
+        
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User assignment not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: rows[0]
+        });
+        
+    } catch (error) {
+        console.error('Error fetching app-user assignment:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch app-user assignment',
+            error: error.message
+        });
+    }
+});
+
 // Get users assigned to application
 app.get('/api/app-users/:applicationId', adminAccess, async (req, res) => {
     try {
@@ -1406,6 +1776,7 @@ app.get('/api/app-users/:applicationId', adminAccess, async (req, res) => {
             SELECT 
                 au.application_id,
                 au.user_id,
+                au.app_role,
                 au.status,
                 au.start_date,
                 au.end_date,
@@ -1438,11 +1809,12 @@ app.get('/api/app-users/:applicationId', adminAccess, async (req, res) => {
 });
 
 // Assign user to application
-app.post('/api/app-users', adminAccess, async (req, res) => {
+app.post('/api/app-users', adminAccess, csrfProtection, async (req, res) => {
     try {
         const {
             application_id,
             user_id,
+            app_role,
             status = 'Inactive',
             start_date,
             end_date,
@@ -1473,14 +1845,16 @@ app.post('/api/app-users', adminAccess, async (req, res) => {
             INSERT INTO sa_app_user (
                 application_id,
                 user_id,
+                app_role,
                 status,
                 start_date,
                 end_date,
                 track_user
-            ) VALUES (?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
         `, [
             application_id,
             user_id,
+            app_role || null,
             status,
             start_date || null,
             end_date || null,
@@ -1503,7 +1877,7 @@ app.post('/api/app-users', adminAccess, async (req, res) => {
 });
 
 // Update user assignment
-app.put('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) => {
+app.put('/api/app-users/:applicationId/:userId', adminAccess, csrfProtection, async (req, res) => {
     try {
         const applicationId = parseInt(req.params.applicationId);
         const userId = parseInt(req.params.userId);
@@ -1516,6 +1890,7 @@ app.put('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) =
         }
         
         const {
+            app_role,
             status,
             start_date,
             end_date,
@@ -1525,6 +1900,7 @@ app.put('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) =
         const [result] = await pool.execute(`
             UPDATE sa_app_user 
             SET 
+                app_role = ?,
                 status = ?,
                 start_date = ?,
                 end_date = ?,
@@ -1532,6 +1908,7 @@ app.put('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) =
                 date_updated = CURRENT_TIMESTAMP
             WHERE application_id = ? AND user_id = ?
         `, [
+            app_role || null,
             status || 'Inactive',
             start_date || null,
             end_date || null,
@@ -1562,8 +1939,8 @@ app.put('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) =
     }
 });
 
-// Remove user from application
-app.delete('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) => {
+// Remove user from application  
+app.delete('/api/app-users/:applicationId/:userId', adminAccess, csrfProtection, async (req, res) => {
     try {
         const applicationId = parseInt(req.params.applicationId);
         const userId = parseInt(req.params.userId);
@@ -1603,7 +1980,7 @@ app.delete('/api/app-users/:applicationId/:userId', adminAccess, async (req, res
 });
 
 // Verify admin access endpoint
-app.post('/api/auth/verify-admin', (req, res) => {
+app.post('/api/auth/verify-admin', csrfProtection, userAccess, (req, res) => {
     res.json({
         success: true,
         user: {
@@ -1613,8 +1990,128 @@ app.post('/api/auth/verify-admin', (req, res) => {
     });
 });
 
+// Get security questions for password reset
+app.post('/api/auth/security-questions', csrfProtection, async (req, res) => {
+    try {
+        const { username } = req.body;
+        
+        if (!username) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username is required'
+            });
+        }
+        
+        // Find user by username or email
+        const [users] = await pool.execute(
+            'SELECT security_question_1, security_question_2 FROM sa_users WHERE username = ? OR email = ?',
+            [username, username]
+        );
+        
+        if (users.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        const user = users[0];
+        
+        res.json({
+            success: true,
+            data: {
+                question1: user.security_question_1 || 'No security question set',
+                question2: user.security_question_2 || 'No security question set'
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching security questions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch security questions',
+            error: error.message
+        });
+    }
+});
+
+// Reset password using security questions
+app.post('/api/auth/reset-password', csrfProtection, async (req, res) => {
+    try {
+        const { username, answer1, answer2, newPassword } = req.body;
+        
+        if (!username || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username and new password are required'
+            });
+        }
+        
+        if (!answer1 && !answer2) {
+            return res.status(400).json({
+                success: false,
+                message: 'At least one security answer is required'
+            });
+        }
+        
+        // Find user by username or email
+        const [users] = await pool.execute(
+            'SELECT user_id, security_answer_1_hash, security_answer_2_hash FROM sa_users WHERE username = ? OR email = ?',
+            [username, username]
+        );
+        
+        if (users.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        const user = users[0];
+        let isValid = false;
+        
+        // Check security answers
+        if (answer1 && user.security_answer_1_hash) {
+            isValid = await verifyPassword(answer1.trim(), user.security_answer_1_hash);
+        }
+        
+        if (!isValid && answer2 && user.security_answer_2_hash) {
+            isValid = await verifyPassword(answer2.trim(), user.security_answer_2_hash);
+        }
+        
+        if (!isValid) {
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid security answer'
+            });
+        }
+        
+        // Hash new password
+        const passwordHash = await hashPassword(newPassword);
+        
+        // Update password
+        await pool.execute(
+            'UPDATE sa_users SET master_password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
+            [passwordHash, user.user_id]
+        );
+        
+        res.json({
+            success: true,
+            message: 'Password reset successfully'
+        });
+        
+    } catch (error) {
+        console.error('Error resetting password:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to reset password',
+            error: error.message
+        });
+    }
+});
+
 // Login endpoint (for authentication)
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', rateLimitLogin, async (req, res) => {
     try {
         const { username, password } = req.body;
         
@@ -1653,10 +2150,17 @@ app.post('/api/auth/login', async (req, res) => {
         
         if (!passwordValid) {
             console.log(`❌ Invalid password for user: ${username}`);
+            // Don't reset rate limit on failed password
             return res.status(401).json({
                 success: false,
                 message: 'Invalid credentials'
             });
+        }
+        
+        // Reset rate limit on successful login
+        const ip = req.ip || req.connection.remoteAddress;
+        if (loginAttempts.has(ip)) {
+            loginAttempts.delete(ip);
         }
         
         // Check account status (case insensitive)
@@ -1677,7 +2181,7 @@ app.post('/api/auth/login', async (req, res) => {
         console.log(`✅ Login successful for user: ${username}`);
         
         // Create session for all users
-        const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        const sessionId = crypto.randomBytes(32).toString('hex');
         activeSessions.set(sessionId, {
             userId: user.user_id,
             username: user.username,
@@ -1685,11 +2189,12 @@ app.post('/api/auth/login', async (req, res) => {
             createdAt: new Date()
         });
         
-        // Store session ID in appropriate localStorage key based on role
-        const sessionKey = user.role === 'Admin' ? 'adminSessionId' : 'userSessionId';
+        // Generate CSRF token
+        const csrfToken = generateCSRFToken();
+        csrfTokens.set(sessionId, csrfToken);
         
         // Return user info (excluding sensitive data)
-        const { master_password_hash, ...userInfo } = user;
+        const { master_password_hash, security_answer_1_hash, security_answer_2_hash, ...userInfo } = user;
         
         res.json({
             success: true,
@@ -1697,7 +2202,7 @@ app.post('/api/auth/login', async (req, res) => {
             data: {
                 user: userInfo,
                 sessionId: sessionId,
-                token: 'dummy-token-for-demo'
+                csrfToken: csrfToken
             }
         });
         
@@ -1749,7 +2254,7 @@ app.get('/api/track-user', adminAccess, async (req, res) => {
 });
 
 // Create tracking record
-app.post('/api/track-user', userAccess, async (req, res) => {
+app.post('/api/track-user', userAccess, csrfProtection, async (req, res) => {
     try {
         const {
             user_id,
@@ -1913,6 +2418,27 @@ app.use((req, res) => {
         message: 'Endpoint not found'
     });
 });
+
+// Session cleanup - run every 30 minutes
+setInterval(() => {
+    const now = Date.now();
+    const expiredSessions = [];
+    
+    for (const [sessionId, session] of activeSessions.entries()) {
+        if (now - session.createdAt.getTime() > 3600000) { // 1 hour
+            expiredSessions.push(sessionId);
+        }
+    }
+    
+    expiredSessions.forEach(sessionId => {
+        activeSessions.delete(sessionId);
+        csrfTokens.delete(sessionId);
+    });
+    
+    if (expiredSessions.length > 0) {
+        console.log(`🧹 Cleaned up ${expiredSessions.length} expired sessions`);
+    }
+}, 30 * 60 * 1000);
 
 // Start server
 async function startServer() {

@@ -816,7 +816,7 @@
             } else {
                 alert(message);
             }
-            window.location.href = 'login_client.html';
+            window.location.href = 'index.html';
         }
         
         function initializeAdminPage() {
@@ -1065,7 +1065,7 @@
                 // Show form and enable buttons
                 formLoading.style.display = 'none';
                 formContainer.style.display = 'block';
-                deleteBtn.disabled = false;
+                deleteBtn.disabled = selectedUser.username === 'SAAdmin'; // Disable delete for SAAdmin
                 submitBtn.disabled = false;
                 isEditing = false;
                 isNewUser = false;
@@ -1076,6 +1076,48 @@
                 console.error('Error loading user:', error);
                 formLoading.style.display = 'none';
                 showAlert('Failed to load user details: ' + error.message);
+            }
+        }
+
+        // Apply SAAdmin restrictions
+        function applySAAdminRestrictions(user) {
+            const isSAAdmin = user && user.username === 'SAAdmin';
+            
+            if (isSAAdmin) {
+                // Disable delete button for SAAdmin
+                deleteBtn.disabled = true;
+                
+                // Disable fields that SAAdmin cannot edit
+                document.getElementById('firstName').disabled = true;
+                document.getElementById('lastName').disabled = true;
+                document.getElementById('username').disabled = true;
+                document.getElementById('email').disabled = true;
+                document.getElementById('role').disabled = true;
+                document.getElementById('twoFactorEnabled').disabled = true;
+                
+                // Enable only allowed fields for SAAdmin
+                document.getElementById('accountStatus').disabled = false;
+                document.getElementById('tokenExpiration').disabled = false;
+                document.getElementById('password').disabled = false;
+                document.getElementById('securityQuestion1').disabled = false;
+                document.getElementById('securityAnswer1').disabled = false;
+                document.getElementById('securityQuestion2').disabled = false;
+                document.getElementById('securityAnswer2').disabled = false;
+            } else {
+                // Enable all fields for non-SAAdmin users
+                document.getElementById('firstName').disabled = false;
+                document.getElementById('lastName').disabled = false;
+                document.getElementById('username').disabled = false;
+                document.getElementById('email').disabled = false;
+                document.getElementById('role').disabled = false;
+                document.getElementById('twoFactorEnabled').disabled = false;
+                document.getElementById('accountStatus').disabled = false;
+                document.getElementById('tokenExpiration').disabled = false;
+                document.getElementById('password').disabled = false;
+                document.getElementById('securityQuestion1').disabled = false;
+                document.getElementById('securityAnswer1').disabled = false;
+                document.getElementById('securityQuestion2').disabled = false;
+                document.getElementById('securityAnswer2').disabled = false;
             }
         }
 
@@ -1120,6 +1162,9 @@
                 answer2Field.value = '';
                 answer2Field.placeholder = 'Enter security answer';
             }
+            
+            // Apply SAAdmin restrictions after populating form
+            applySAAdminRestrictions(user);
             
             console.log('Form populated successfully');
         }

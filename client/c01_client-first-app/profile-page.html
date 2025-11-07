@@ -526,7 +526,7 @@
                     console.log('❌ No session found, redirecting to login');
                     showAlert('Please login to access your profile', 'error');
                     setTimeout(() => {
-                        window.location.href = 'login_client.html';
+                        window.location.href = 'index.html';
                     }, 2000);
                     return;
                 }
@@ -585,10 +585,15 @@
             } catch (error) {
                 console.error('❌ Authentication error:', error);
                 console.log('🍪 Current cookies:', document.cookie);
-                showAlert('Authentication failed: ' + error.message, 'error');
-                // setTimeout(() => {
-                //     window.location.href = 'login_client.html';
-                // }, 3000);
+                
+                // Clear invalid session and redirect to login
+                localStorage.removeItem('userSessionId');
+                localStorage.removeItem('adminSessionId');
+                
+                showAlert('Session invalid. Please login again.', 'error');
+                setTimeout(() => {
+                    window.location.href = 'index.html';
+                }, 2000);
             }
         });
     </script>

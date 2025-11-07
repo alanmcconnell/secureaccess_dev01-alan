@@ -414,15 +414,17 @@
                                     </select>
                                 </div>
                             </div>
+                            <!--
                             <div class="form-row">
                                 <div class="form-group full-width">
                                     <label for="applicationURL">Application URL</label>
                                     <div class="url-input-container">
-                                        <input type="url" id="applicationURL" name="application_URL" placeholder="https://example.com">
+                                        <input type="url" id="applicationURL" name="redirect_URL" placeholder="https://example.com">
                                         <span class="url-icon" onclick="openApplicationURL()" title="Open URL in new tab">🔗</span>
                                     </div>
                                 </div>
                             </div>
+                            -->
                             <div class="form-row">
                                 <div class="form-group full-width">
                                     <label for="redirectURL">Redirect URL</label>
@@ -563,7 +565,7 @@
             } else {
                 alert(message);
             }
-            window.location.href = 'login_client.html';
+            window.location.href = 'index.html';
         }
 
         // API functions with session authentication
@@ -632,6 +634,7 @@
             alertElement.classList.remove('show');
         }
 
+        /*
         // Open application URL in new tab
         function openApplicationURL() {
             const url = document.getElementById('applicationURL').value.trim();
@@ -643,6 +646,7 @@
                 showAlert('Please enter a URL first');
             }
         }
+        */
 
         // Open redirect URL in new tab
         function openRedirectURL() {
@@ -765,7 +769,7 @@
         function populateForm(app) {
             document.getElementById('applicationName').value = app.application_name || '';
             document.getElementById('description').value = app.description || '';
-            document.getElementById('applicationURL').value = app.application_URL || '';
+            //document.getElementById('applicationURL').value = app.redirect_URL || '';
             document.getElementById('redirectURL').value = app.redirect_URL || '';
             document.getElementById('failureURL').value = app.failure_URL || '';
             document.getElementById('securityRoles').value = app.security_roles || '';
@@ -822,7 +826,7 @@
                 const applicationData = {
                     application_name: applicationName,
                     description: document.getElementById('description').value.trim(),
-                    application_URL: document.getElementById('applicationURL').value.trim(),
+                    //redirect_URL: document.getElementById('applicationURL').value.trim(),
                     redirect_URL: document.getElementById('redirectURL').value.trim(),
                     failure_URL: document.getElementById('failureURL').value.trim(),
                     security_roles: document.getElementById('securityRoles').value.trim(),

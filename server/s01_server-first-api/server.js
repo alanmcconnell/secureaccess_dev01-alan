@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const csrf = require('csurf');
 const crypto = require('crypto');
+const validator = require('validator');
 
              require( "./_config.js" )                                                  // .(51013.03.1 RAM Load process.fvaR)
 //    dotenv.config( { path:       `${ __dirname }/.env`) } );                          //#.(51013.03.2 RAM No workie in windows)
@@ -30,6 +31,48 @@ function generateSecureRandomToken() {
     return crypto.randomBytes(32).toString('hex');
 }
 
+// Rate limiting store with cleanup
+const loginAttempts = new Map();
+
+// Cleanup expired rate limit entries every 5 minutes
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, data] of loginAttempts.entries()) {
+        if (now > data.resetTime) {
+            loginAttempts.delete(ip);
+        }
+    }
+}, 5 * 60 * 1000);
+
+// Rate limiting middleware
+function rateLimitLogin(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    const windowMs = 15 * 60 * 1000; // 15 minutes
+    const maxAttempts = 5;
+    
+    if (!loginAttempts.has(ip)) {
+        loginAttempts.set(ip, { count: 0, resetTime: now + windowMs });
+    }
+    
+    const attempts = loginAttempts.get(ip);
+    
+    if (now > attempts.resetTime) {
+        attempts.count = 0;
+        attempts.resetTime = now + windowMs;
+    }
+    
+    if (attempts.count >= maxAttempts) {
+        return res.status(429).json({
+            success: false,
+            message: 'Too many login attempts. Please try again later.'
+        });
+    }
+    
+    attempts.count++;
+    next();
+}
+
 // Simple CSRF protection using custom header
 function csrfCrossOrigin(req, res, next) {
     // Skip CSRF for GET requests
@@ -41,7 +84,10 @@ function csrfCrossOrigin(req, res, next) {
     const customHeader = req.headers['x-requested-with'];
     if (!customHeader || customHeader !== 'XMLHttpRequest') {
         console.log('❌ CSRF validation failed: Missing X-Requested-With header');
-        console.log('📋 Request headers:', req.headers);
+        // Avoid logging sensitive headers in production
+        if (process.env.NODE_ENV !== 'production') {
+            console.log('📋 Request headers:', req.headers);
+        }
         return res.status(403).json({ error: 'Invalid request' });
     }
     
@@ -67,22 +113,40 @@ const allowedOrigins = NODE_ENV === 'production'
     ? [ `${HOST}:${PORT}`, `${HOST}`]
     : [ `${BASE_URL}`, SECURE_PATH ];                                                   // .(51013.04.16 RAM Server: SECURE_API_URL).(51013.03.6 RAM Client: SECURE_PATH)
 
-    allowedOrigins.forEach( aHost => { if (aHost.match( /http:\/\/localhost/ ) ) { allowedOrigins.push( aHost.replace( /\/\/localhost/, "//127.0.0.1" ) ) } } )
-//  ? [ `https://${HOST}`, `https://${HOST}:${PORT}`]
-//  : [ `http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`,
-//      `http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`,
-//      'http://localhost:3001', 'http://127.0.0.1:3001',
-//      'http://localhost:5500', 'http://127.0.0.1:5500'
-//       ];
+    allowedOrigins.forEach( aHost => { if (aHost.match( /localhost/ ) ) { allowedOrigins.push( aHost.replace( /localhost/, "127.0.0.1" ) ) } } )
 
 app.use(cors({
     origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Access'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Access', 'X-Requested-With'],
     credentials: true
 }));
+
+// Security headers middleware
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'");
+    next();
+});
 app.use(cookieParser());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Input sanitization middleware
+function sanitizeInput(req, res, next) {
+    if (req.body) {
+        for (const key in req.body) {
+            if (typeof req.body[key] === 'string') {
+                req.body[key] = validator.escape(req.body[key]);
+            }
+        }
+    }
+    next();
+}
+
 app.use(express.static(path.join(__dirname, '../../client/c01_client-first-app'))); // Serve client files
 
 // CSRF Protection - configured for cross-origin
@@ -115,15 +179,25 @@ function generateToken(user) {
         account_status: user.account_status
     };
     
-    return jwt.sign(payload, JWT_SECRET, { 
+    console.log('🎫 Generating JWT token for user:', user.username);
+    console.log('🔑 JWT_SECRET length:', JWT_SECRET.length);
+    console.log('🔑 JWT_SECRET preview:', JWT_SECRET.substring(0, 20) + '...');
+    
+    const token = jwt.sign(payload, JWT_SECRET, { 
         expiresIn: JWT_EXPIRES_IN,
         issuer: 'SecureAccess',
         audience: 'SecureAccess-Users'
     });
+    
+    console.log('✅ JWT token generated successfully');
+    return token;
 }
 
 // JWT Token verification middleware
 function verifyToken(req, res, next) {
+    console.log('🔐 JWT Verification - Headers:', req.headers.authorization ? 'Bearer token present' : 'No Bearer token');
+    console.log('🍪 JWT Verification - Cookies:', req.cookies?.authToken ? 'Auth cookie present' : 'No auth cookie');
+    
     // Check for token in HTTP-only cookie first, then Authorization header
     let token = req.cookies?.authToken;
     
@@ -131,10 +205,14 @@ function verifyToken(req, res, next) {
         const authHeader = req.headers.authorization;
         if (authHeader && authHeader.startsWith('Bearer ')) {
             token = authHeader.substring(7);
+            console.log('🎫 Using Bearer token from Authorization header');
         }
+    } else {
+        console.log('🎫 Using token from HTTP-only cookie');
     }
 
     if (!token) {
+        console.log('❌ No token found in request');
         return res.status(401).json({
             success: false,
             message: 'Access token required',
@@ -143,21 +221,15 @@ function verifyToken(req, res, next) {
     }
 
     try {
+        console.log('🔍 Verifying JWT token...');
         const decoded = jwt.verify(token, JWT_SECRET);
-        
-        // Check if token is expired
-        if (decoded.exp < Date.now() / 1000) {
-            return res.status(401).json({
-                success: false,
-                message: 'Token has expired',
-                code: 'TOKEN_EXPIRED'
-            });
-        }
+        console.log('✅ JWT decoded successfully:', { user_id: decoded.user_id, username: decoded.username, role: decoded.role });
         
         req.user = decoded;
+        console.log('✅ JWT verification successful, user set:', req.user.user_id);
         next();
     } catch (error) {
-        console.error('JWT verification error:', error.message);
+        console.error('❌ JWT verification error:', error.message);
         return res.status(401).json({
             success: false,
             message: 'Invalid token',
@@ -223,7 +295,8 @@ async function initDatabase() {
         await ensureTableExists();
         
     } catch (error) {
-        console.error('❌ Database connection failed:', error.message);
+        const errorMessage = error && error.message ? error.message : 'Unknown database connection error';
+        console.error('❌ Database connection failed:', errorMessage);
         process.exit(1);
     }
 }
@@ -239,7 +312,7 @@ async function ensureTableExists() {
                 username VARCHAR(50) UNIQUE NOT NULL,
                 email VARCHAR(100) UNIQUE NOT NULL,
                 master_password_hash VARCHAR(255) NOT NULL,
-                account_status ENUM('active', 'inactive', 'locked') DEFAULT 'active',
+                account_status ENUM('Active', 'Inactive', 'Suspended') DEFAULT 'Active',
                 two_factor_enabled BOOLEAN DEFAULT FALSE,
                 two_factor_secret VARCHAR(255),
                 role ENUM('User', 'Admin') DEFAULT 'User',
@@ -251,14 +324,57 @@ async function ensureTableExists() {
                 last_login_timestamp TIMESTAMP NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-            )
+            );
         `;
         
         await pool.execute(createTableSQL);
         console.log('✅ sa_users table verified/created');
         
+        // Create sa_applications table
+        const createAppsTableSQL = `
+            CREATE TABLE IF NOT EXISTS sa_applications (
+                application_id INT AUTO_INCREMENT PRIMARY KEY,
+                application_name VARCHAR(100) NOT NULL,
+                description TEXT,
+                redirect_URL VARCHAR(255),
+                failure_URL VARCHAR(255),
+                app_key VARCHAR(100),
+                security_roles VARCHAR(255),
+                parm_email ENUM('Yes', 'No') DEFAULT 'No',
+                parm_username ENUM('Yes', 'No') DEFAULT 'No',
+                parm_PKCE ENUM('Yes', 'No') DEFAULT 'No',
+                status ENUM('Active', 'Inactive') DEFAULT 'Inactive',
+                date_created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                date_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            );
+        `;
+        
+        await pool.execute(createAppsTableSQL);
+        console.log('✅ sa_applications table verified/created');
+        
+        // Create sa_app_user table
+        const createAppUserTableSQL = `
+            CREATE TABLE IF NOT EXISTS sa_app_user (
+                app_user_id INT AUTO_INCREMENT PRIMARY KEY,
+                application_id INT NOT NULL,
+                user_id INT NOT NULL,
+                app_role VARCHAR(50),
+                status ENUM('Active', 'Inactive') DEFAULT 'Inactive',
+                track_user ENUM('Yes', 'No') DEFAULT 'No',
+                start_date DATE,
+                end_date DATE,
+                FOREIGN KEY (application_id) REFERENCES sa_applications(application_id),
+                FOREIGN KEY (user_id) REFERENCES sa_users(user_id),
+                UNIQUE KEY unique_app_user (application_id, user_id)
+            );
+        `;
+        
+        await pool.execute(createAppUserTableSQL);
+        console.log('✅ sa_app_user table verified/created');
+        
     } catch (error) {
-        console.error('❌ Error creating sa_users table:', error.message);
+        const errorMessage = error && error.message ? error.message : 'Unknown table creation error';
+        console.error('❌ Error creating sa_users table:', errorMessage);
     }
 }
 
@@ -278,15 +394,11 @@ async function verifyPassword(password, hash) {
     try {
         return await bcrypt.compare(password, hash);
     } catch (error) {
-        console.error('Password verification error:', error.message);
+        const errorMessage = error && error.message ? error.message : 'Unknown password verification error';
+        console.error('Password verification error:', errorMessage);
         return false;
     }
 }
-
-// CSRF token endpoint
-app.get('/api/csrf-token', csrfProtection, (req, res) => {
-    res.json({ csrfToken: req.csrfToken() });
-});
 
 // Health check endpoint (no CSRF needed)
 app.get('/health', (req, res) => {
@@ -307,151 +419,216 @@ app.get('/config', (req, res) => {
     });
 });
 
-// Debug CSRF endpoint
-app.get('/debug/csrf', (req, res) => {
-    res.json({ 
-        message: 'CSRF debug info',
-        cookies: req.cookies,
-        headers: req.headers
-    });
-});
-
-// JWT Token validation endpoint
-app.post('/api/auth/verify-token', verifyToken, (req, res) => {
-    res.json({
-        success: true,
-        message: 'Token is valid',
-        user: {
-            user_id: req.user.user_id,
-            username: req.user.username,
-            email: req.user.email,
-            role: req.user.role,
-            account_status: req.user.account_status
-        }
-    });
-});
-
-// Auth verify endpoint for profile page
-app.get('/api/auth/verify', (req, res) => {
-    console.log('🔍 Auth verify request received');
-    console.log('🍪 Request cookies:', req.cookies);
-    console.log('📋 Request headers:', req.headers.authorization);
-    
-    // Check for token in HTTP-only cookie first, then Authorization header
-    let token = req.cookies?.authToken;
-    
-    if (!token) {
-        const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            token = authHeader.substring(7);
-        }
-    }
-
-    if (!token) {
-        console.log('❌ No token found in request');
-        return res.status(401).json({
+// Applications endpoints
+app.get('/api/applications', verifyToken, async (req, res) => {
+    try {
+        const [rows] = await pool.execute(`
+            SELECT application_id, application_name, description,
+                   redirect_URL, failure_URL, app_key, security_roles,
+                   parm_email, parm_username, parm_PKCE, status
+            FROM sa_applications 
+            ORDER BY application_name
+        `);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+    } catch (error) {
+        console.error('Error fetching applications:', error);
+        res.status(500).json({
             success: false,
-            message: 'Access token required',
-            code: 'TOKEN_MISSING'
+            message: 'Failed to fetch applications',
+            error: error.message
         });
     }
+});
 
+// Get individual application
+app.get('/api/applications/:id', verifyToken, async (req, res) => {
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const appId = parseInt(req.params.id);
+        const [rows] = await pool.execute(`
+            SELECT * FROM sa_applications WHERE application_id = ?
+        `, [appId]);
         
-        // Check if token is expired
-        if (decoded.exp < Date.now() / 1000) {
-            console.log('❌ Token expired');
-            return res.status(401).json({
+        if (rows.length === 0) {
+            return res.status(404).json({
                 success: false,
-                message: 'Token has expired',
-                code: 'TOKEN_EXPIRED'
+                message: 'Application not found'
             });
         }
         
-        console.log('✅ Token verified for user:', decoded.username);
         res.json({
             success: true,
-            message: 'Token is valid',
-            data: {
-                userId: decoded.user_id,
-                username: decoded.username,
-                email: decoded.email,
-                role: decoded.role
-            }
+            data: rows[0]
         });
     } catch (error) {
-        console.error('❌ JWT verification error:', error.message);
-        return res.status(401).json({
+        console.error('Error fetching application:', error);
+        res.status(500).json({
             success: false,
-            message: 'Invalid token',
-            code: 'TOKEN_INVALID'
+            message: 'Failed to fetch application',
+            error: error.message
         });
     }
 });
 
-// Auth verify endpoint POST method
-app.post('/api/auth/verify', verifyToken, (req, res) => {
-    res.json({
-        success: true,
-        message: 'Token is valid',
-        data: {
-            userId: req.user.user_id,
-            username: req.user.username,
-            email: req.user.email,
-            role: req.user.role
-        }
-    });
-});
-
-// Admin access verification endpoint
-app.post('/api/auth/verify-admin', adminAccess, (req, res) => {
-    res.json({
-        success: true,
-        message: 'Admin access confirmed',
-        user: {
-            user_id: req.user.user_id,
-            username: req.user.username,
-            email: req.user.email,
-            role: req.user.role
-        }
-    });
-});
-
-// Test bcrypt endpoint
-app.get('/api/test-bcrypt', async (req, res) => {
-    const testPassword = 'password123';
-    const wrongHash = '$2b$12$LQv3c1yqBwcVsvDwxVFOa.hNt/p5j9RLGPLBrkQUTz/p8QFJ1aP.q';
-    
+// Create new application
+app.post('/api/applications', csrfCrossOrigin, adminAccess, async (req, res) => {
     try {
-        console.log('🧪 Testing bcrypt with known values...');
-        console.log(`   Password: ${testPassword}`);
-        console.log(`   Wrong Hash: ${wrongHash}`);
+        const {
+            application_name,
+            description,
+            redirect_URL,
+            failure_URL,
+            app_key,
+            security_roles,
+            parm_email = 'No',
+            parm_username = 'No',
+            parm_PKCE = 'No',
+            status = 'Inactive'
+        } = req.body;
         
-        const wrongResult = await bcrypt.compare(testPassword, wrongHash);
-        console.log(`   Wrong hash result: ${wrongResult}`);
+        if (!application_name) {
+            return res.status(400).json({
+                success: false,
+                message: 'Application name is required'
+            });
+        }
         
-        // Generate correct hash
-        console.log('🔧 Generating correct hash...');
-        const correctHash = await hashPassword(testPassword);
-        console.log(`   Correct Hash: ${correctHash}`);
+        const [result] = await pool.execute(`
+            INSERT INTO sa_applications (
+                application_name, description, redirect_URL, failure_URL, app_key, security_roles,
+                parm_email, parm_username, parm_PKCE, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            application_name,
+            description || null,
+            redirect_URL || null,
+            failure_URL || null,
+            app_key || null,
+            security_roles || null,
+            parm_email,
+            parm_username,
+            parm_PKCE,
+            status
+        ]);
         
-        const correctResult = await bcrypt.compare(testPassword, correctHash);
-        console.log(`   Correct hash result: ${correctResult}`);
+        res.status(201).json({
+            success: true,
+            message: 'Application created successfully',
+            data: {
+                application_id: result.insertId,
+                application_name,
+                description,
+                redirect_URL,
+                failure_URL,
+                app_key,
+                security_roles,
+                parm_email,
+                parm_username,
+                parm_PKCE,
+                status
+            }
+        });
+    } catch (error) {
+        console.error('Error creating application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create application',
+            error: error.message
+        });
+    }
+});
+
+// Update application
+app.put('/api/applications/:id', csrfCrossOrigin, adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.id);
+        const {
+            application_name,
+            description,
+            redirect_URL,
+            failure_URL,
+            security_roles,
+            parm_email,
+            parm_username,
+            parm_PKCE,
+            status
+        } = req.body;
+        
+        if (!application_name) {
+            return res.status(400).json({
+                success: false,
+                message: 'Application name is required'
+            });
+        }
+        
+        const [result] = await pool.execute(`
+            UPDATE sa_applications SET
+                application_name = ?, description = ?, redirect_URL = ?, failure_URL = ?, security_roles = ?,
+                parm_email = ?, parm_username = ?, parm_PKCE = ?, status = ?
+            WHERE application_id = ?
+        `, [
+            application_name,
+            description || null,
+            redirect_URL || null,
+            failure_URL || null,
+            security_roles || null,
+            parm_email || null,
+            parm_username || null,
+            parm_PKCE || null,
+            status || null,
+            applicationId
+        ]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
         
         res.json({
             success: true,
-            password: testPassword,
-            wrong_hash: wrongHash,
-            wrong_result: wrongResult,
-            correct_hash: correctHash,
-            correct_result: correctResult,
-            sql_command: `UPDATE sa_users SET master_password_hash = '${correctHash}' WHERE username = 'officecat';`
+            message: 'Application updated successfully'
         });
     } catch (error) {
-        console.error('❌ Bcrypt test error:', error);
-        res.json({
+        console.error('Error updating application:', error);
+        res.status(500).json({
             success: false,
+            message: 'Failed to update application',
+            error: error.message
+        });
+    }
+});
+
+// Delete application
+app.delete('/api/applications/:id', csrfCrossOrigin, adminAccess, async (req, res) => {
+    try {
+        const applicationId = parseInt(req.params.id);
+        
+        const [result] = await pool.execute(
+            'DELETE FROM sa_applications WHERE application_id = ?',
+            [applicationId]
+        );
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            message: 'Application deleted successfully'
+        });
+    } catch (error) {
+        console.error('Error deleting application:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete application',
             error: error.message
         });
     }
@@ -460,16 +637,6 @@ app.get('/api/test-bcrypt', async (req, res) => {
 // Get all users - PROTECTED WITH JWT
 app.get('/api/users', adminAccess, async (req, res) => {
     try {
-        console.log('📊 GET /api/users - Loading all users...');
-        
-        if (!pool) {
-            console.error('❌ Database pool not initialized');
-            return res.status(500).json({
-                success: false,
-                message: 'Database connection not available'
-            });
-        }
-        
         const [rows] = await pool.execute(`
             SELECT 
                 user_id,
@@ -488,68 +655,16 @@ app.get('/api/users', adminAccess, async (req, res) => {
             ORDER BY first_name, last_name
         `);
         
-        console.log(`✅ Found ${rows.length} users`);
-        
         res.json({
             success: true,
             data: rows
         });
         
     } catch (error) {
-        console.error('❌ Error fetching users:');
-        console.error('Error code:', error.code);
-        console.error('Error message:', error.message);
-        console.error('SQL State:', error.sqlState);
-        console.error('Full error:', error);
-        
+        console.error('Error fetching users:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to fetch users',
-            error: error.message,
-            details: error.code
-        });
-    }
-});
-
-// Get own profile - /me endpoint  
-app.get('/api/users/me', verifyToken, async (req, res) => {
-    // Allow both Admin and User roles
-    if (!req.user || !['Admin', 'User'].includes(req.user.role)) {
-        return res.status(403).json({
-            success: false,
-            message: 'Access denied'
-        });
-    }
-    try {
-        const userId = req.user.user_id;
-        
-        const [rows] = await pool.execute(`
-            SELECT 
-                user_id, first_name, last_name, username, email,
-                account_creation_date, last_login_timestamp, account_status,
-                security_question_1, security_answer_1_hash, security_question_2, security_answer_2_hash, 
-                two_factor_enabled, token_expiration_minutes, created_at, updated_at
-            FROM sa_users 
-            WHERE user_id = ?
-        `, [userId]);
-        
-        if (rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        res.json({
-            success: true,
-            data: rows[0]
-        });
-        
-    } catch (error) {
-        console.error('Error fetching user profile:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch user profile',
             error: error.message
         });
     }
@@ -603,149 +718,77 @@ app.get('/api/users/:id', verifyToken, async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error fetching user:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch user',
-            error: error.message
-        });
+        const errorMessage = error && error.message ? error.message : 'Unknown error';
+        console.error('Error fetching user:', errorMessage);
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: 'Failed to fetch user'
+            });
+        }
     }
 });
 
-// Create new user - PROTECTED WITH JWT
-app.post('/api/users', adminAccess, async (req, res) => {
+// Get own profile - /me endpoint  
+app.get('/api/users/me', verifyToken, async (req, res) => {
     try {
-        const {
-            first_name,
-            last_name,
-            username,
-            email,
-            password,
-            account_status = 'active',
-            two_factor_enabled = false,
-            role = 'User',
-            security_question_1,
-            security_answer_1,
-            security_question_2,
-            security_answer_2,
-            token_expiration_minutes = 60
-        } = req.body;
+        console.log('👤 /users/me request from user:', req.user);
         
-        // Validation
-        if (!first_name || !last_name || !username || !email || !password) {
+        if (!req.user) {
+            console.log('❌ No user object in request');
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: first_name, last_name, username, email, password'
+                message: 'Invalid user ID'
             });
         }
         
-        // Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
+        const userId = req.user.user_id;
+        console.log('🔍 Looking up user ID:', userId, 'Type:', typeof userId);
+        
+        if (!userId || isNaN(parseInt(userId))) {
+            console.log('❌ Invalid user ID format:', userId);
             return res.status(400).json({
                 success: false,
-                message: 'Invalid email format'
+                message: 'Invalid user ID'
             });
         }
         
-        // Validate password strength
-        if (password.length < 8) {
-            return res.status(400).json({
+        const [rows] = await pool.execute(`
+            SELECT 
+                user_id, first_name, last_name, username, email,
+                account_status, last_login_timestamp, role,
+                security_question_1, security_question_2, 
+                two_factor_enabled, token_expiration_minutes, created_at, updated_at
+            FROM sa_users 
+            WHERE user_id = ?
+        `, [parseInt(userId)]);
+        
+        if (rows.length === 0) {
+            console.log('❌ User not found in database:', userId);
+            return res.status(404).json({
                 success: false,
-                message: 'Password must be at least 8 characters long'
+                message: 'User not found'
             });
         }
         
-        // Check if username or email already exists
-        const [existingUsers] = await pool.execute(
-            'SELECT user_id FROM sa_users WHERE username = ? OR email = ?',
-            [username, email]
-        );
-        
-        if (existingUsers.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: 'Username or email already exists'
-            });
-        }
-        
-        // Hash password
-        const passwordHash = await hashPassword(password);
-        
-        // Hash security answers if provided
-        let hashedAnswer1 = null;
-        let hashedAnswer2 = null;
-        
-        if (security_answer_1 && security_answer_1.trim() !== '') {
-            hashedAnswer1 = await hashPassword(security_answer_1.trim());
-            console.log('🔐 Hashed security_answer_1 for new user');
-        }
-        
-        if (security_answer_2 && security_answer_2.trim() !== '') {
-            hashedAnswer2 = await hashPassword(security_answer_2.trim());
-            console.log('🔐 Hashed security_answer_2 for new user');
-        }
-        
-        // Insert new user
-        const [result] = await pool.execute(`
-            INSERT INTO sa_users (
-                first_name,
-                last_name,
-                username,
-                email,
-                master_password_hash,
-                account_status,
-                two_factor_enabled,
-                role,
-                security_question_1,
-                security_answer_1_hash,
-                security_question_2,
-                security_answer_2_hash,
-                token_expiration_minutes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-            first_name,
-            last_name,
-            username,
-            email,
-            passwordHash,
-            account_status,
-            two_factor_enabled,
-            role,
-            security_question_1 || null,
-            hashedAnswer1,
-            security_question_2 || null,
-            hashedAnswer2,
-            token_expiration_minutes
-        ]);
-        
-        res.status(201).json({
+        console.log('✅ User profile found:', rows[0].username);
+        res.json({
             success: true,
-            message: 'User created successfully',
-            data: {
-                user_id: result.insertId,
-                first_name,
-                last_name,
-                username,
-                email,
-                account_status,
-                two_factor_enabled,
-                token_expiration_minutes
-            }
+            data: rows[0]
         });
         
     } catch (error) {
-        console.error('Error creating user:', error);
+        console.error('❌ Error fetching user profile:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to create user',
+            message: 'Failed to fetch user profile',
             error: error.message
         });
     }
 });
 
 // Update own profile - /me endpoint
-app.put('/api/users/me', verifyToken, async (req, res) => {
+app.put('/api/users/me', csrfCrossOrigin, verifyToken, async (req, res) => {
     // Allow both Admin and User roles
     if (!req.user || !['Admin', 'User'].includes(req.user.role)) {
         return res.status(403).json({
@@ -829,7 +872,14 @@ app.put('/api/users/me', verifyToken, async (req, res) => {
         updates.push('updated_at = CURRENT_TIMESTAMP');
         values.push(userId);
         
-        const updateSQL = `UPDATE sa_users SET ${updates.join(', ')} WHERE user_id = ?`;
+        // Validate updates array contains only safe column assignments
+        const allowedColumns = ['first_name', 'last_name', 'username', 'email', 'master_password_hash', 'security_question_1', 'security_answer_1_hash', 'security_question_2', 'security_answer_2_hash', 'updated_at'];
+        const safeUpdates = updates.filter(update => {
+            const column = update.split(' = ')[0];
+            return allowedColumns.includes(column);
+        });
+        
+        const updateSQL = `UPDATE sa_users SET ${safeUpdates.join(', ')} WHERE user_id = ?`;
         
         const [updateResult] = await pool.execute(updateSQL, values);
         
@@ -858,8 +908,150 @@ app.put('/api/users/me', verifyToken, async (req, res) => {
     }
 });
 
+// Create new user - PROTECTED WITH JWT
+app.post('/api/users', csrfCrossOrigin, adminAccess, async (req, res) => {
+    try {
+        const {
+            first_name,
+            last_name,
+            username,
+            email,
+            password,
+            account_status = 'active',
+            two_factor_enabled = false,
+            role = 'User',
+            security_question_1,
+            security_answer_1,
+            security_question_2,
+            security_answer_2,
+            token_expiration_minutes = 60
+        } = req.body;
+        
+        // Validation
+        if (!first_name || !last_name || !username || !email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: first_name, last_name, username, email, password'
+            });
+        }
+        
+        // Validate email format
+        if (!validator.isEmail(email)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid email format'
+            });
+        }
+        
+        // Validate password strength
+        if (!validator.isLength(password, { min: 8, max: 128 })) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must be between 8 and 128 characters long'
+            });
+        }
+        
+        if (!validator.isStrongPassword(password, {
+            minLength: 8,
+            minLowercase: 1,
+            minUppercase: 1,
+            minNumbers: 1,
+            minSymbols: 1
+        })) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character'
+            });
+        }
+        
+        // Check if username or email already exists
+        const [existingUsers] = await pool.execute(
+            'SELECT user_id FROM sa_users WHERE username = ? OR email = ?',
+            [username, email]
+        );
+        
+        if (existingUsers.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: 'Username or email already exists'
+            });
+        }
+        
+        // Hash password
+        const passwordHash = await hashPassword(password);
+        
+        // Hash security answers if provided
+        let hashedAnswer1 = null;
+        let hashedAnswer2 = null;
+        
+        if (security_answer_1 && security_answer_1.trim() !== '') {
+            hashedAnswer1 = await hashPassword(security_answer_1.trim());
+        }
+        
+        if (security_answer_2 && security_answer_2.trim() !== '') {
+            hashedAnswer2 = await hashPassword(security_answer_2.trim());
+        }
+        
+        // Insert new user
+        const [result] = await pool.execute(`
+            INSERT INTO sa_users (
+                first_name,
+                last_name,
+                username,
+                email,
+                master_password_hash,
+                account_status,
+                two_factor_enabled,
+                role,
+                security_question_1,
+                security_answer_1_hash,
+                security_question_2,
+                security_answer_2_hash,
+                token_expiration_minutes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+            first_name,
+            last_name,
+            username,
+            email,
+            passwordHash,
+            account_status,
+            two_factor_enabled,
+            role,
+            security_question_1 || null,
+            hashedAnswer1,
+            security_question_2 || null,
+            hashedAnswer2,
+            token_expiration_minutes
+        ]);
+        
+        res.status(201).json({
+            success: true,
+            message: 'User created successfully',
+            data: {
+                user_id: result.insertId,
+                first_name,
+                last_name,
+                username,
+                email,
+                account_status,
+                two_factor_enabled,
+                token_expiration_minutes
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error creating user:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create user',
+            error: error.message
+        });
+    }
+});
+
 // Update user - PROTECTED WITH JWT
-app.put('/api/users/:id', adminAccess, async (req, res) => {
+app.put('/api/users/:id', csrfCrossOrigin, adminAccess, async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         
@@ -899,18 +1091,6 @@ app.put('/api/users/:id', adminAccess, async (req, res) => {
             token_expiration_minutes
         } = req.body;
         
-        console.log('🔄 Update request for user ID:', userId);
-        console.log('📝 Received data:', {
-            first_name,
-            last_name,
-            username,
-            email,
-            security_question_1,
-            security_answer_1: security_answer_1 ? '[PROVIDED]' : '[NOT PROVIDED]',
-            security_question_2,
-            security_answer_2: security_answer_2 ? '[PROVIDED]' : '[NOT PROVIDED]'
-        });
-        
         // Build dynamic update query
         const updates = [];
         const values = [];
@@ -932,7 +1112,6 @@ app.put('/api/users/:id', adminAccess, async (req, res) => {
             values.push(email);
         }
         if (password !== undefined && password.trim() !== '') {
-            console.log('🔒 Hashing new password...');
             const passwordHash = await hashPassword(password);
             updates.push('master_password_hash = ?');
             values.push(passwordHash);
@@ -950,35 +1129,23 @@ app.put('/api/users/:id', adminAccess, async (req, res) => {
             values.push(role);
         }
         if (security_question_1 !== undefined) {
-            console.log('📋 Updating security_question_1:', security_question_1);
             updates.push('security_question_1 = ?');
             values.push(security_question_1);
         }
-        
-        // FIXED: Security Answer 1 handling
         if (security_answer_1 !== undefined && security_answer_1.trim() !== '') {
-            console.log('🔐 Hashing security_answer_1...');
             const hashedAnswer1 = await hashPassword(security_answer_1.trim());
             updates.push('security_answer_1_hash = ?');
             values.push(hashedAnswer1);
-            console.log('✅ security_answer_1_hash updated');
         }
-        
         if (security_question_2 !== undefined) {
-            console.log('📋 Updating security_question_2:', security_question_2);
             updates.push('security_question_2 = ?');
             values.push(security_question_2);
         }
-        
-        // FIXED: Security Answer 2 handling
         if (security_answer_2 !== undefined && security_answer_2.trim() !== '') {
-            console.log('🔐 Hashing security_answer_2...');
             const hashedAnswer2 = await hashPassword(security_answer_2.trim());
             updates.push('security_answer_2_hash = ?');
             values.push(hashedAnswer2);
-            console.log('✅ security_answer_2_hash updated');
         }
-        
         if (token_expiration_minutes !== undefined) {
             updates.push('token_expiration_minutes = ?');
             values.push(token_expiration_minutes);
@@ -995,47 +1162,24 @@ app.put('/api/users/:id', adminAccess, async (req, res) => {
         updates.push('updated_at = CURRENT_TIMESTAMP');
         values.push(userId);
         
-        const updateSQL = `UPDATE sa_users SET ${updates.join(', ')} WHERE user_id = ?`;
+        // Validate updates array contains only safe column assignments
+        const allowedColumns = ['first_name', 'last_name', 'username', 'email', 'master_password_hash', 'account_status', 'two_factor_enabled', 'role', 'security_question_1', 'security_answer_1_hash', 'security_question_2', 'security_answer_2_hash', 'token_expiration_minutes', 'updated_at'];
+        const safeUpdates = updates.filter(update => {
+            const column = update.split(' = ')[0];
+            return allowedColumns.includes(column);
+        });
         
-        console.log('🗃️ Executing SQL:', updateSQL);
-        console.log('📊 With values:', values.map((v, i) => 
-            values.length - 1 === i ? `userId: ${v}` : 
-            updates[i]?.includes('password') || updates[i]?.includes('answer') ? '[HASHED]' : v
-        ));
+        const updateSQL = `UPDATE sa_users SET ${safeUpdates.join(', ')} WHERE user_id = ?`;
         
         const [updateResult] = await pool.execute(updateSQL, values);
         
-        console.log('✅ Update result:', {
-            affectedRows: updateResult.affectedRows,
-            changedRows: updateResult.changedRows
-        });
-        
-        // Fetch updated user data
-        const [updatedUser] = await pool.execute(`
-            SELECT 
-                user_id,
-                first_name,
-                last_name,
-                username,
-                email,
-                account_status,
-                two_factor_enabled,
-                security_question_1,
-                security_question_2,
-                token_expiration_minutes,
-                updated_at
-            FROM sa_users 
-            WHERE user_id = ?
-        `, [userId]);
-        
         res.json({
             success: true,
-            message: 'User updated successfully',
-            data: updatedUser[0]
+            message: 'User updated successfully'
         });
         
     } catch (error) {
-        console.error('❌ Error updating user:', error);
+        console.error('Error updating user:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to update user',
@@ -1044,8 +1188,8 @@ app.put('/api/users/:id', adminAccess, async (req, res) => {
     }
 });
 
-// Delete user and related records - PROTECTED WITH JWT
-app.delete('/api/users/:id', adminAccess, async (req, res) => {
+// Delete user - PROTECTED WITH JWT
+app.delete('/api/users/:id', csrfCrossOrigin, adminAccess, async (req, res) => {
     try {
         const userId = parseInt(req.params.id);
         
@@ -1069,751 +1213,19 @@ app.delete('/api/users/:id', adminAccess, async (req, res) => {
             });
         }
         
-        // Start transaction for safe deletion
-        const connection = await pool.getConnection();
-        await connection.beginTransaction();
+        // Delete the user
+        await pool.execute('DELETE FROM sa_users WHERE user_id = ?', [userId]);
         
-        try {
-            // Delete related records from other tables (add as needed)
-            // Example: await connection.execute('DELETE FROM user_sessions WHERE user_id = ?', [userId]);
-            // Example: await connection.execute('DELETE FROM user_tokens WHERE user_id = ?', [userId]);
-            // Example: await connection.execute('DELETE FROM user_logs WHERE user_id = ?', [userId]);
-            
-            // Delete the user
-            await connection.execute('DELETE FROM sa_users WHERE user_id = ?', [userId]);
-            
-            await connection.commit();
-            connection.release();
-            
-            res.json({
-                success: true,
-                message: `User ${existingUser[0].username} deleted successfully`
-            });
-            
-        } catch (error) {
-            await connection.rollback();
-            connection.release();
-            throw error;
-        }
+        res.json({
+            success: true,
+            message: `User ${existingUser[0].username} deleted successfully`
+        });
         
     } catch (error) {
         console.error('Error deleting user:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to delete user',
-            error: error.message
-        });
-    }
-});
-
-// Debug endpoint for security answers - PROTECTED WITH JWT
-app.get('/api/debug/user/:id/security', adminAccess, async (req, res) => {
-    try {
-        const userId = parseInt(req.params.id);
-        
-        const [rows] = await pool.execute(`
-            SELECT 
-                user_id,
-                username,
-                security_question_1,
-                security_answer_1_hash,
-                security_question_2,
-                security_answer_2_hash,
-                LENGTH(security_answer_1_hash) as answer1_hash_length,
-                LENGTH(security_answer_2_hash) as answer2_hash_length
-            FROM sa_users 
-            WHERE user_id = ?
-        `, [userId]);
-        
-        if (rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        const user = rows[0];
-        
-        res.json({
-            success: true,
-            data: {
-                user_id: user.user_id,
-                username: user.username,
-                security_question_1: user.security_question_1,
-                has_security_answer_1: !!user.security_answer_1_hash,
-                answer1_hash_length: user.answer1_hash_length,
-                security_question_2: user.security_question_2,
-                has_security_answer_2: !!user.security_answer_2_hash,
-                answer2_hash_length: user.answer2_hash_length
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error fetching security debug info:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch security info',
-            error: error.message
-        });
-    }
-});
-
-// Reset password for a single user - PROTECTED WITH JWT
-app.post('/api/admin/reset-single-password', adminAccess, async (req, res) => {
-    try {
-        const { username, newPassword } = req.body;
-        
-        if (!username || !newPassword) {
-            return res.status(400).json({
-                success: false,
-                message: 'Username and newPassword are required'
-            });
-        }
-        
-        if (!pool) {
-            return res.status(500).json({
-                success: false,
-                message: 'Database connection not available'
-            });
-        }
-        
-        // Hash the new password
-        const passwordHash = await hashPassword(newPassword);
-        
-        // Update the user's password
-        const [result] = await pool.execute(
-            'UPDATE sa_users SET master_password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ?',
-            [passwordHash, username]
-        );
-        
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        console.log(`✅ Password reset for user: ${username}`);
-        
-        res.json({
-            success: true,
-            message: `Password reset successfully for user: ${username}`
-        });
-        
-    } catch (error) {
-        console.error('❌ Error resetting password:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to reset password',
-            error: error.message
-        });
-    }
-});
-
-// Bulk fix passwords for users with NULL password_hash - PROTECTED WITH JWT
-app.post('/api/admin/fix-passwords', adminAccess, async (req, res) => {
-    try {
-        const { defaultPassword = 'password123' } = req.body;
-        
-        if (!pool) {
-            return res.status(500).json({
-                success: false,
-                message: 'Database connection not available'
-            });
-        }
-        
-        // Find all users with NULL or empty master_password_hash
-        const [usersWithoutPasswords] = await pool.execute(
-            'SELECT user_id, username FROM sa_users WHERE master_password_hash IS NULL OR master_password_hash = ""'
-        );
-        
-        if (usersWithoutPasswords.length === 0) {
-            return res.json({
-                success: true,
-                message: 'All users already have password hashes',
-                fixed_count: 0
-            });
-        }
-        
-        // Hash the default password
-        const passwordHash = await hashPassword(defaultPassword);
-        
-        // Update all users without password hashes
-        const [result] = await pool.execute(
-            'UPDATE sa_users SET master_password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE master_password_hash IS NULL OR master_password_hash = ""',
-            [passwordHash]
-        );
-        
-        console.log(`✅ Fixed password hashes for ${result.affectedRows} users with default password: ${defaultPassword}`);
-        
-        res.json({
-            success: true,
-            message: `Fixed password hashes for ${result.affectedRows} users`,
-            fixed_count: result.affectedRows,
-            default_password: defaultPassword,
-            affected_users: usersWithoutPasswords.map(u => u.username)
-        });
-        
-    } catch (error) {
-        console.error('❌ Error fixing passwords:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fix passwords',
-            error: error.message
-        });
-    }
-});
-
-// Registration endpoint - PUBLIC ACCESS
-app.post('/api/auth/register', async (req, res) => {
-    try {
-        const {
-            firstName,
-            lastName,
-            username,
-            email,
-            password,
-            securityQuestions,
-            twoFactorEnabled = false
-        } = req.body;
-        
-        console.log(`📝 Registration attempt for username: ${username}`);
-        
-        // Validation
-        if (!firstName || !lastName || !username || !email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Missing required fields: firstName, lastName, username, email, password'
-            });
-        }
-        
-        // Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid email format'
-            });
-        }
-        
-        // Validate password strength
-        if (password.length < 8) {
-            return res.status(400).json({
-                success: false,
-                message: 'Password must be at least 8 characters long'
-            });
-        }
-        
-        // Check if username or email already exists
-        const [existingUsers] = await pool.execute(
-            'SELECT user_id FROM sa_users WHERE username = ? OR email = ?',
-            [username, email]
-        );
-        
-        if (existingUsers.length > 0) {
-            return res.status(409).json({
-                success: false,
-                message: 'Username or email already exists'
-            });
-        }
-        
-        // Hash password
-        const passwordHash = await hashPassword(password);
-        
-        // Hash security answers if provided
-        let hashedAnswer1 = null;
-        let hashedAnswer2 = null;
-        let securityQuestion1 = null;
-        let securityQuestion2 = null;
-        
-        if (securityQuestions && Array.isArray(securityQuestions) && securityQuestions.length >= 2) {
-            if (securityQuestions[0]?.question && securityQuestions[0]?.answer) {
-                securityQuestion1 = securityQuestions[0].question;
-                hashedAnswer1 = await hashPassword(securityQuestions[0].answer.trim());
-                console.log('🔐 Hashed security_answer_1 for registration');
-            }
-            
-            if (securityQuestions[1]?.question && securityQuestions[1]?.answer) {
-                securityQuestion2 = securityQuestions[1].question;
-                hashedAnswer2 = await hashPassword(securityQuestions[1].answer.trim());
-                console.log('🔐 Hashed security_answer_2 for registration');
-            }
-        }
-        
-        // Insert new user
-        const [result] = await pool.execute(`
-            INSERT INTO sa_users (
-                first_name,
-                last_name,
-                username,
-                email,
-                master_password_hash,
-                account_status,
-                two_factor_enabled,
-                role,
-                security_question_1,
-                security_answer_1_hash,
-                security_question_2,
-                security_answer_2_hash,
-                token_expiration_minutes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-            firstName,
-            lastName,
-            username,
-            email,
-            passwordHash,
-            'inactive',
-            twoFactorEnabled,
-            'User',
-            securityQuestion1,
-            hashedAnswer1,
-            securityQuestion2,
-            hashedAnswer2,
-            60
-        ]);
-        
-        console.log(`✅ User registered successfully: ${username} (ID: ${result.insertId})`);
-        
-        res.status(201).json({
-            success: true,
-            message: 'Registration successful',
-            data: {
-                user_id: result.insertId,
-                firstName,
-                lastName,
-                username,
-                email,
-                account_status: 'inactive',
-                role: 'User'
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Error during registration:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Registration failed',
-            error: error.message
-        });
-    }
-});
-
-// Login endpoint - UPDATED TO GENERATE JWT TOKENS
-app.post('/api/auth/login', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        
-        console.log(`🔍 Login attempt for username: ${username}`);
-        
-        if (!username || !password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Username and password are required'
-            });
-        }
-        
-        // Find user by username or email
-        const [users] = await pool.execute(
-            'SELECT * FROM sa_users WHERE username = ? OR email = ?',
-            [username, username]
-        );
-        
-        if (users.length === 0) {
-            console.log(`❌ User not found: ${username}`);
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid credentials'
-            });
-        }
-        
-        const user = users[0];
-        console.log(`✅ User found: ${user.username}`);
-        console.log(`   Account status: ${user.account_status}`);
-        console.log(`   Role: ${user.role}`);
-        console.log(`   Has master_password_hash: ${!!user.master_password_hash}`);
-        console.log(`   Hash length: ${user.master_password_hash ? user.master_password_hash.length : 0}`);
-        
-        // Verify password
-        const passwordValid = await verifyPassword(password, user.master_password_hash);
-        console.log(`   Password valid: ${passwordValid}`);
-        
-        if (!passwordValid) {
-            console.log(`❌ Invalid password for user: ${username}`);
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid credentials'
-            });
-        }
-        
-        // Check account status (case insensitive)
-        if (user.account_status.toLowerCase() !== 'active') {
-            console.log(`❌ Account not active: ${user.account_status}`);
-            return res.status(403).json({
-                success: false,
-                message: 'Account is disabled'
-            });
-        }
-        
-        // Generate JWT token
-        const token = generateToken(user);
-        console.log(`🎫 Generated JWT token for user: ${username}`);
-        
-        // Update last login timestamp
-        await pool.execute(
-            'UPDATE sa_users SET last_login_timestamp = CURRENT_TIMESTAMP WHERE user_id = ?',
-            [user.user_id]
-        );
-        
-        console.log(`✅ Login successful for user: ${username} (role: ${user.role})`);
-        
-        // Set JWT token as HTTP-only cookie
-        res.cookie('authToken', token, {
-            httpOnly: true,
-            secure: false,
-            sameSite: 'lax',
-            maxAge: 24 * 60 * 60 * 1000,
-            path: '/'
-        });
-        
-        console.log('🍪 Cookie set with token for user:', username);
-        console.log('🍪 Cookie details:', {
-            name: 'authToken',
-            httpOnly: true,
-            secure: false,
-            sameSite: 'lax',
-            maxAge: 24 * 60 * 60 * 1000,
-            path: '/'
-        });
-        
-        // Return user info (excluding sensitive data)
-        const { master_password_hash, security_answer_1_hash, security_answer_2_hash, two_factor_secret, ...userInfo } = user;
-        
-        res.json({
-            success: true,
-            message: 'Login successful',
-            data: {
-                user: userInfo,
-                token: token // Temporarily include token in response for debugging
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error during login:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Login failed',
-            error: error.message
-        });
-    }
-});
-
-// Logout endpoint
-app.post('/api/auth/logout', verifyToken, (req, res) => {
-    // Clear the HTTP-only cookie
-    res.clearCookie('authToken', {
-        httpOnly: true,
-        secure: false,
-        sameSite: 'lax',
-        path: '/'
-    });
-    
-    console.log(`🚪 User ${req.user.username} logged out`);
-    res.json({
-        success: true,
-        message: 'Logged out successfully'
-    });
-});
-
-// Applications endpoints
-app.get('/api/applications', verifyToken, async (req, res) => {
-    try {
-        const [rows] = await pool.execute(`
-            SELECT application_id, application_name, application_URL, description,
-                   redirect_URL, failure_URL, app_key, security_roles,
-                   parm_email, parm_username, parm_PKCE, status
-            FROM sa_applications 
-            ORDER BY application_name
-        `);
-        
-        res.json({
-            success: true,
-            data: rows
-        });
-    } catch (error) {
-        console.error('Error fetching applications:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch applications',
-            error: error.message
-        });
-    }
-});
-
-app.get('/api/applications/:id', verifyToken, async (req, res) => {
-    try {
-        const appId = parseInt(req.params.id);
-        const [rows] = await pool.execute(`
-            SELECT * FROM sa_applications WHERE application_id = ?
-        `, [appId]);
-        
-        if (rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Application not found'
-            });
-        }
-        
-        res.json({
-            success: true,
-            data: rows[0]
-        });
-    } catch (error) {
-        console.error('Error fetching application:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch application',
-            error: error.message
-        });
-    }
-});
-
-// Get application by app_key
-app.get('/api/applications/by-key/:appKey', async (req, res) => {
-    try {
-        const appKey = req.params.appKey;
-        const [rows] = await pool.execute(`
-            SELECT * FROM sa_applications WHERE app_key = ?
-        `, [appKey]);
-        
-        if (rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Application not found'
-            });
-        }
-        
-        res.json({
-            success: true,
-            data: rows[0]
-        });
-    } catch (error) {
-        console.error('Error fetching application by key:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch application',
-            error: error.message
-        });
-    }
-});
-
-// User applications endpoint
-app.get('/api/user-applications', verifyToken, async (req, res) => {
-    try {
-        const userId = req.user.user_id;
-        const [rows] = await pool.execute(`
-            SELECT a.application_id, a.application_name, a.application_URL, a.description
-            FROM sa_applications a
-            INNER JOIN sa_app_user au ON a.application_id = au.application_id
-            WHERE au.user_id = ?
-            ORDER BY a.application_name
-        `, [userId]);
-        
-        res.json({
-            success: true,
-            data: rows
-        });
-    } catch (error) {
-        console.error('Error fetching user applications:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch user applications',
-            error: error.message
-        });
-    }
-});
-
-// Create new application
-app.post('/api/applications', adminAccess, async (req, res) => {
-    try {
-        const {
-            application_name,
-            description,
-            application_URL,
-            redirect_URL,
-            failure_URL,
-            app_key,
-            security_roles,
-            parm_email = 'No',
-            parm_username = 'No',
-            parm_PKCE = 'No',
-            status = 'Inactive'
-        } = req.body;
-        
-        if (!application_name) {
-            return res.status(400).json({
-                success: false,
-                message: 'Application name is required'
-            });
-        }
-        
-        const [result] = await pool.execute(`
-            INSERT INTO sa_applications (
-                application_name, description, application_URL, redirect_URL, failure_URL, app_key, security_roles,
-                parm_email, parm_username, parm_PKCE, status,
-                date_created, date_updated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-        `, [
-            application_name || null, 
-            description || null, 
-            application_URL || null, 
-            redirect_URL || null, 
-            failure_URL || null, 
-            app_key || null,
-            security_roles || null,
-            parm_email || 'No', 
-            parm_username || 'No', 
-            parm_PKCE || 'No', 
-            status || 'Inactive'
-        ]);
-        
-        res.status(201).json({
-            success: true,
-            message: 'Application created successfully',
-            data: {
-                application_id: result.insertId,
-                application_name,
-                description,
-                application_URL,
-                redirect_URL,
-                failure_URL,
-                app_key,
-                security_roles,
-                parm_email,
-                parm_username,
-                parm_PKCE,
-                status
-            }
-        });
-    } catch (error) {
-        console.error('Error creating application:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create application',
-            error: error.message
-        });
-    }
-});
-
-// Update application
-app.put('/api/applications/:id', adminAccess, async (req, res) => {
-    try {
-        const applicationId = parseInt(req.params.id);
-        const {
-            application_name,
-            description,
-            application_URL,
-            redirect_URL,
-            failure_URL,
-            app_key,
-            security_roles,
-            parm_email,
-            parm_username,
-            parm_PKCE,
-            status
-        } = req.body;
-        
-        if (!application_name) {
-            return res.status(400).json({
-                success: false,
-                message: 'Application name is required'
-            });
-        }
-        
-        // Check if app_key already exists
-        const [existing] = await pool.execute(
-            'SELECT app_key FROM sa_applications WHERE application_id = ?',
-            [applicationId]
-        );
-        
-        if (existing.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Application not found'
-            });
-        }
-        
-        // Use existing app_key if it has a value, otherwise use new one
-        const finalAppKey = existing[0].app_key ? existing[0].app_key : (app_key || null);
-        
-        const [result] = await pool.execute(`
-            UPDATE sa_applications SET
-                application_name = ?, description = ?, application_URL = ?, redirect_URL = ?, failure_URL = ?, app_key = ?, security_roles = ?,
-                parm_email = ?, parm_username = ?, parm_PKCE = ?, status = ?,
-                date_updated = NOW()
-            WHERE application_id = ?
-        `, [
-            application_name || null, 
-            description || null, 
-            application_URL || null, 
-            redirect_URL || null, 
-            failure_URL || null, 
-            finalAppKey,
-            security_roles || null,
-            parm_email || null, 
-            parm_username || null, 
-            parm_PKCE || null, 
-            status || null, 
-            applicationId
-        ]);
-        
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Application not found'
-            });
-        }
-        
-        res.json({
-            success: true,
-            message: 'Application updated successfully'
-        });
-    } catch (error) {
-        console.error('Error updating application:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to update application',
-            error: error.message
-        });
-    }
-});
-
-// Delete application
-app.delete('/api/applications/:id', adminAccess, async (req, res) => {
-    try {
-        const applicationId = parseInt(req.params.id);
-        
-        const [result] = await pool.execute(
-            'DELETE FROM sa_applications WHERE application_id = ?',
-            [applicationId]
-        );
-        
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'Application not found'
-            });
-        }
-        
-        res.json({
-            success: true,
-            message: 'Application deleted successfully'
-        });
-    } catch (error) {
-        console.error('Error deleting application:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to delete application',
             error: error.message
         });
     }
@@ -1846,40 +1258,8 @@ app.get('/api/app-users/:applicationId', adminAccess, async (req, res) => {
     }
 });
 
-// Get specific user access for application
-app.get('/api/app-users/:applicationId/:userId', async (req, res) => {
-    try {
-        const applicationId = parseInt(req.params.applicationId);
-        const userId = parseInt(req.params.userId);
-        
-        const [rows] = await pool.execute(`
-            SELECT * FROM sa_app_user 
-            WHERE application_id = ? AND user_id = ?
-        `, [applicationId, userId]);
-        
-        if (rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'User access not found'
-            });
-        }
-        
-        res.json({
-            success: true,
-            data: rows[0]
-        });
-    } catch (error) {
-        console.error('Error fetching user access:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch user access',
-            error: error.message
-        });
-    }
-});
-
 // Create app-user assignment
-app.post('/api/app-users', adminAccess, async (req, res) => {
+app.post('/api/app-users', csrfCrossOrigin, adminAccess, async (req, res) => {
     try {
         const {
             application_id,
@@ -1927,7 +1307,7 @@ app.post('/api/app-users', adminAccess, async (req, res) => {
 });
 
 // Update app-user assignment
-app.put('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) => {
+app.put('/api/app-users/:applicationId/:userId', csrfCrossOrigin, adminAccess, async (req, res) => {
     try {
         const applicationId = parseInt(req.params.applicationId);
         const userId = parseInt(req.params.userId);
@@ -1967,7 +1347,7 @@ app.put('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) =
 });
 
 // Delete app-user assignment
-app.delete('/api/app-users/:applicationId/:userId', adminAccess, async (req, res) => {
+app.delete('/api/app-users/:applicationId/:userId', csrfCrossOrigin, adminAccess, async (req, res) => {
     try {
         const applicationId = parseInt(req.params.applicationId);
         const userId = parseInt(req.params.userId);
@@ -1993,6 +1373,132 @@ app.delete('/api/app-users/:applicationId/:userId', adminAccess, async (req, res
         res.status(500).json({
             success: false,
             message: 'Failed to delete user assignment',
+            error: error.message
+        });
+    }
+});
+
+// User applications endpoint
+app.get('/api/user-applications', verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.user_id;
+        const [rows] = await pool.execute(`
+            SELECT a.application_id, a.application_name, a.description
+            FROM sa_applications a
+            INNER JOIN sa_app_user au ON a.application_id = au.application_id
+            WHERE au.user_id = ?
+            ORDER BY a.application_name
+        `, [userId]);
+        
+        res.json({
+            success: true,
+            data: rows
+        });
+    } catch (error) {
+        console.error('Error fetching user applications:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch user applications',
+            error: error.message
+        });
+    }
+});
+
+// Login endpoint - UPDATED TO GENERATE JWT TOKENS
+app.post('/api/auth/login', rateLimitLogin, async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        
+        console.log(`🔍 Login attempt for username: ${username}`);
+        
+        if (!username || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username and password are required'
+            });
+        }
+        
+        // Find user by username or email
+        const [users] = await pool.execute(
+            'SELECT * FROM sa_users WHERE username = ? OR email = ?',
+            [username, username]
+        );
+        
+        if (users.length === 0) {
+            console.log(`❌ User not found: ${username}`);
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid credentials'
+            });
+        }
+        
+        const user = users[0];
+        console.log(`✅ User found: ${user.username}`);
+        
+        // Verify password
+        const passwordValid = await verifyPassword(password, user.master_password_hash);
+        
+        if (!passwordValid) {
+            console.log(`❌ Invalid password for user: ${username}`);
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid credentials'
+            });
+        }
+        
+        // Reset rate limit on successful login
+        const ip = req.ip || req.connection.remoteAddress;
+        if (loginAttempts.has(ip)) {
+            loginAttempts.delete(ip);
+        }
+        
+        // Check account status (case insensitive)
+        if (user.account_status.toLowerCase() !== 'active') {
+            console.log(`❌ Account not active: ${user.account_status}`);
+            return res.status(403).json({
+                success: false,
+                message: 'Account is disabled'
+            });
+        }
+        
+        // Generate JWT token
+        const token = generateToken(user);
+        console.log(`🎫 Generated JWT token for user: ${username}`);
+        
+        // Update last login timestamp
+        await pool.execute(
+            'UPDATE sa_users SET last_login_timestamp = CURRENT_TIMESTAMP WHERE user_id = ?',
+            [user.user_id]
+        );
+        
+        console.log(`✅ Login successful for user: ${username} (role: ${user.role})`);
+        
+        // Set JWT token as HTTP-only cookie
+        res.cookie('authToken', token, {
+            httpOnly: true,
+            secure: false,
+            sameSite: 'lax',
+            maxAge: 24 * 60 * 60 * 1000,
+            path: '/'
+        });
+        
+        // Return user info (excluding sensitive data)
+        const { master_password_hash, security_answer_1_hash, security_answer_2_hash, two_factor_secret, ...userInfo } = user;
+        
+        res.json({
+            success: true,
+            message: 'Login successful',
+            data: {
+                user: userInfo,
+                token: token
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error during login:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Login failed',
             error: error.message
         });
     }
@@ -2057,7 +1563,7 @@ app.get('/api/computer-info', verifyToken, async (req, res) => {
 });
 
 // Track application usage
-app.post('/api/track-user', verifyToken, async (req, res) => {
+app.post('/api/track-user', csrfCrossOrigin, verifyToken, async (req, res) => {
     try {
         const userId = req.user.user_id;
         const { application_id, computer_name, computer_MAC, computer_ip } = req.body;
@@ -2068,6 +1574,21 @@ app.post('/api/track-user', verifyToken, async (req, res) => {
                 message: 'application_id is required'
             });
         }
+        
+        // Create tracking table if it doesn't exist
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS sa_tracking_user (
+                tracking_id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                application_id INT NOT NULL,
+                event_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                computer_name VARCHAR(255),
+                computer_MAC VARCHAR(255),
+                computer_ip VARCHAR(255),
+                FOREIGN KEY (user_id) REFERENCES sa_users(user_id),
+                FOREIGN KEY (application_id) REFERENCES sa_applications(application_id)
+            )
+        `);
         
         await pool.execute(`
             INSERT INTO sa_tracking_user (user_id, application_id, event_date, computer_name, computer_MAC, computer_ip)
@@ -2088,102 +1609,161 @@ app.post('/api/track-user', verifyToken, async (req, res) => {
     }
 });
 
-// PKCE validation endpoint
-app.post('/api/pkce/validate', verifyToken, async (req, res) => {
+// Get security questions - PUBLIC ACCESS
+app.post('/api/auth/security-questions', csrfCrossOrigin, async (req, res) => {
     try {
-        const { session_id, code_verifier, application_id } = req.body;
+        const { username } = req.body;
         
-        if (!session_id || !code_verifier) {
+        if (!username || username.trim() === '') {
             return res.status(400).json({
                 success: false,
-                message: 'session_id and code_verifier are required'
+                message: 'Username is required'
             });
         }
         
-        // In production, store PKCE sessions in database or Redis
-        // For now, return validation success
+        const [users] = await pool.execute(
+            'SELECT security_question_1, security_question_2 FROM sa_users WHERE username = ? OR email = ?',
+            [username.trim(), username.trim()]
+        );
+        
+        if (users.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        const user = users[0];
         res.json({
             success: true,
-            message: 'PKCE validation successful',
             data: {
-                validated: true,
-                timestamp: new Date().toISOString()
+                security_question_1: user.security_question_1,
+                security_question_2: user.security_question_2
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching security questions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch security questions'
+        });
+    }
+});
+
+// Verify security answer - PUBLIC ACCESS
+app.post('/api/auth/verify-security-answer', csrfCrossOrigin, async (req, res) => {
+    try {
+        const { username, questionNumber, answer } = req.body;
+        
+        if (!username || !questionNumber || !answer) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username, question number, and answer are required'
+            });
+        }
+        
+        const answerField = questionNumber === 1 ? 'security_answer_1_hash' : 'security_answer_2_hash';
+        
+        const answerColumn = questionNumber === 1 ? 'security_answer_1_hash' : 'security_answer_2_hash';
+        const [users] = await pool.execute(
+            `SELECT ${answerColumn} FROM sa_users WHERE username = ? OR email = ?`,
+            [username.trim(), username.trim()]
+        );
+        
+        if (users.length === 0) {
+            return res.json({ success: false });
+        }
+        
+        const user = users[0];
+        const storedHash = user[answerField];
+        
+        if (!storedHash) {
+            return res.json({ success: false });
+        }
+        
+        const isValid = await verifyPassword(answer.trim(), storedHash);
+        res.json({ success: isValid });
+        
+    } catch (error) {
+        console.error('Error verifying security answer:', error);
+        res.json({ success: false });
+    }
+});
+
+// Verify JWT token endpoint - for checking if user is authenticated
+app.get('/api/auth/verify', verifyToken, async (req, res) => {
+    try {
+        // If we reach here, the JWT token is valid (verifyToken middleware passed)
+        res.json({
+            success: true,
+            data: {
+                user_id: req.user.user_id,
+                username: req.user.username,
+                email: req.user.email,
+                role: req.user.role,
+                account_status: req.user.account_status
             }
         });
     } catch (error) {
-        console.error('Error validating PKCE:', error);
+        console.error('Error in auth verify:', error);
         res.status(500).json({
             success: false,
-            message: 'PKCE validation failed',
-            error: error.message
+            message: 'Authentication verification failed'
         });
     }
 });
 
-// PKCE session cleanup endpoint
-app.delete('/api/pkce/session/:sessionId', verifyToken, async (req, res) => {
+// Update password after security verification - PUBLIC ACCESS
+app.post('/api/auth/update-password', csrfCrossOrigin, async (req, res) => {
     try {
-        const { sessionId } = req.params;
+        const { username, newPassword } = req.body;
         
-        // In production, remove from database or Redis
-        res.json({
-            success: true,
-            message: 'PKCE session cleaned up'
-        });
-    } catch (error) {
-        console.error('Error cleaning up PKCE session:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to cleanup PKCE session',
-            error: error.message
-        });
-    }
-});
-
-// Legacy PKCE validation endpoint for backward compatibility
-app.post('/api/validate-pkce', async (req, res) => {
-    try {
-        const { session_id, code_verifier } = req.body;
-        
-        if (!session_id || !code_verifier) {
+        if (!username || !newPassword) {
             return res.status(400).json({
                 success: false,
-                message: 'session_id and code_verifier are required'
+                message: 'Username and new password are required'
             });
         }
         
+        if (newPassword.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must be at least 8 characters long'
+            });
+        }
+        
+        const passwordHash = await hashPassword(newPassword);
+        
+        const [result] = await pool.execute(
+            'UPDATE sa_users SET master_password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE username = ? OR email = ?',
+            [passwordHash, username.trim(), username.trim()]
+        );
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        console.log(`Password updated for user: ${username}`);
+        
         res.json({
             success: true,
-            message: 'PKCE validation successful',
-            data: { validated: true }
+            message: 'Password updated successfully'
         });
+        
     } catch (error) {
+        console.error('Error updating password:', error);
         res.status(500).json({
             success: false,
-            message: 'PKCE validation failed'
+            message: 'Failed to update password'
         });
     }
 });
 
-// Error handling middleware
-app.use((error, req, res, next) => {
-    console.error('Unhandled error:', error);
-    res.status(500).json({
-        success: false,
-        message: 'Internal server error',
-        error: error.message
-    });
-});
-
-// 404 handler
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        message: 'Endpoint not found'
-    });
-});
-
-function listRoutes() {                                                                 // .(51007.01.1 RAM Add listRoutes)
+function listRoutes() {
     console.log('\n    === Registered Routes ===');
     app._router.stack.forEach((middleware, index) => {
         if (middleware.route) {
@@ -2192,21 +1772,19 @@ function listRoutes() {                                                         
         }
     });
     console.log('    ========================\n');
-    }                                                                                   // .(51007.01.1 End)
-
+}
 
 // Start server
 async function startServer() {
     try {
         await initDatabase();
 
-              listRoutes()       // .(51007.01.1 RAM Add)
+        listRoutes()
 
         server = app.listen(PORT, () => {
             console.log(`🚀 Server running on ${BASE_URL}`);
-//          console.log(`📊 Admin page:   ${BASE_URL}/admin-users.html`);                 //#.(51013.03.7)
-            console.log(`📊 Admin page:   ${SECURE_PATH}/admin-users.html`);              // .(51013.03.7)
-            console.log(`📊 Login page:   ${SECURE_PATH}/login_client.html`);            // .(51013.03.8)
+            console.log(`📊 Admin page:   ${SECURE_PATH}/admin-users.html`);
+            console.log(`📊 Login page:   ${SECURE_PATH}/index.html`);
             console.log(`🏥 Health check: ${BASE_URL}/health`);
             console.log(`🌍 Environment:  ${NODE_ENV}`);
             console.log(`🔐 JWT Security: ENABLED`);

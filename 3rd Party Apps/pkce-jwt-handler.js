@@ -9,6 +9,16 @@ class PKCEJWTHandler {
     }
 
     /**
+     * Sanitize input to prevent XSS attacks
+     */
+    sanitizeInput(input) {
+        if (!input || typeof input !== 'string') {
+            return '';
+        }
+        return input.replace(/[<>"'&]/g, '');
+    }
+
+    /**
      * Extract user data from PKCE session and create JWT token
      */
     async processAuth() {
@@ -37,22 +47,43 @@ class PKCEJWTHandler {
                 throw new Error('No user data in PKCE session');
             }
 
-            // Create JWT token with user data
-            const jwtToken = this.createJWT(userData);
+            // Sanitize user data to prevent XSS
+            const sanitizedUserData = this.sanitizeUserData(userData);
+            
+            // Create JWT token with sanitized user data
+            const jwtToken = this.createJWT(sanitizedUserData);
             
             // Store JWT token
             localStorage.setItem('authToken', jwtToken);
             
             return {
-                username: userData.username,
-                email: userData.email,
+                username: this.sanitizeInput(userData.username),
+                email: this.sanitizeInput(userData.email),
                 token: jwtToken
             };
 
         } catch (error) {
-            console.error('PKCE authentication failed:', error);
+            console.error('PKCE authentication failed:', String(error.message).replace(/[<>"'&]/g, ''));
             throw error;
         }
+    }
+
+    /**
+     * Sanitize user data to prevent XSS
+     */
+    sanitizeUserData(userData) {
+        const sanitize = (str) => {
+            if (typeof str !== 'string') return str;
+            return str.replace(/[<>"'&]/g, (match) => {
+                const entities = { '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;', '&': '&amp;' };
+                return entities[match];
+            });
+        };
+        
+        return {
+            username: sanitize(userData.username),
+            email: sanitize(userData.email)
+        };
     }
 
     /**
@@ -61,8 +92,8 @@ class PKCEJWTHandler {
     createJWT(userData) {
         const header = { alg: 'none', typ: 'JWT' };
         const payload = {
-            username: userData.username,
-            email: userData.email,
+            username: this.sanitizeInput(userData.username),
+            email: this.sanitizeInput(userData.email),
             iat: Math.floor(Date.now() / 1000),
             exp: Math.floor(Date.now() / 1000) + (60 * 60) // 1 hour
         };
@@ -78,10 +109,13 @@ class PKCEJWTHandler {
      */
     getUserFromParams() {
         const urlParams = new URLSearchParams(window.location.search);
-        return {
+        const rawData = {
             username: urlParams.get('username'),
             email: urlParams.get('email')
         };
+        
+        // Sanitize URL parameters to prevent XSS
+        return this.sanitizeUserData(rawData);
     }
 
     /**
@@ -107,9 +141,9 @@ class PKCEJWTHandler {
 // Usage example:
 // const authHandler = new PKCEJWTHandler('http://localhost:3000');
 // authHandler.init().then(userData => {
-//     console.log('Authenticated user:', userData);
+//     console.log('Authenticated user:', JSON.stringify(userData));
 // }).catch(error => {
-//     console.error('Authentication failed:', error);
+//     console.error('Authentication failed:', error.message);
 // });
 
 window.PKCEJWTHandler = PKCEJWTHandler;

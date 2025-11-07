@@ -248,7 +248,7 @@
                     alert(message);
                 }
             }
-            window.location.href = 'login_client.html';
+            window.location.href = 'index.html';
         }
 
         function showAlert(message) {
@@ -280,10 +280,10 @@
                 if (!response.ok) {
                     if (response.status === 401) {
                         redirectToLogin('Session expired. Please login again.');
-                        return;
+                        return null;
                     } else if (response.status === 403) {
                         redirectToLogin('Access denied.');
-                        return;
+                        return null;
                     }
                     
                     let errorMessage = `HTTP error! status: ${response.status}`;
@@ -314,6 +314,7 @@
         async function loadApplications() {
             try {
                 const result = await apiCall('/user-applications');
+                if (!result) return;
                 applications = result.data || result || [];
                 
                 renderApplications();
@@ -360,13 +361,32 @@
             }
 
             const appHTML = applications.map(app => `
-                <div class="app-item" onclick="launchApplication('${app.application_name}', ${app.application_id})">
+                <div class="app-item" data-app-name="${app.application_name}" data-app-id="${app.application_id}">
                     <span>${app.application_name}</span>
-                    <span class="info-icon" onclick="showDescription(${app.application_id}, event)" title="Show description">?</span>
+                    <span class="info-icon" data-app-id="${app.application_id}" title="Show description">?</span>
                 </div>
             `).join('');
             
             appGrid.innerHTML = appHTML;
+            
+            // Add event listeners after setting innerHTML
+            appGrid.querySelectorAll('.app-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('info-icon')) {
+                        const appName = item.dataset.appName;
+                        const appId = parseInt(item.dataset.appId);
+                        launchApplication(appName, appId);
+                    }
+                });
+            });
+            
+            appGrid.querySelectorAll('.info-icon').forEach(icon => {
+                icon.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const appId = parseInt(icon.dataset.appId);
+                    showDescription(appId, e);
+                });
+            });
         }
 
         // Generate production-ready PKCE parameters
@@ -420,25 +440,53 @@
         // Launch application
         async function launchApplication(appName, appId) {
             try {
-                // Get computer information and track usage
-                const computerInfo = await getComputerInfo();
-                await apiCall('/track-user', 'POST', { 
-                    application_id: appId,
-                    computer_name: computerInfo.computer_name,
-                    computer_MAC: computerInfo.computer_MAC,
-                    computer_ip: computerInfo.computer_ip
-                });
+                // Check if user has tracking enabled for this application
+                let userApp = null;
+                try {
+                    const userAppResult = await apiCall(`/my-app-assignment/${appId}`);
+                    userApp = userAppResult?.data;
+                } catch (error) {
+                    console.warn('Could not check tracking settings:', error);
+                }
+                
+                // If tracking is enabled, record the access
+                if (userApp && userApp.track_user === 'Yes') {
+                    try {
+                        const computerInfo = await getComputerInfo();
+                        const trackingData = {
+                            user_id: currentUser.user_id,
+                            application_id: appId,
+                            event_date: new Date().toISOString(),
+                            computer_name: computerInfo.computer_name,
+                            computer_MAC: computerInfo.computer_MAC,
+                            computer_ip: computerInfo.computer_ip
+                        };
+                        
+                        await apiCall('/track-user', 'POST', trackingData);
+                    } catch (trackError) {
+                        console.warn('Failed to record tracking data:', trackError);
+                    }
+                }
                 
                 // Get application details from sa_applications table
                 const appResult = await apiCall(`/applications/${appId}`);
                 const app = appResult.data || appResult;
                 
-                if (!app || !app.application_URL) {
-                    showAlert('Application URL not found');
+                if (!app || !app.redirect_URL || app.redirect_URL.trim() === '' || app.redirect_URL === '_blank' || app.redirect_URL.includes('_blank')) {
+                    if (typeof acm_SecurePopUp === 'function') {
+                        await acm_SecurePopUp('Application URL not configured properly. Please contact administrator.', "OK:ok");
+                    } else {
+                        showAlert('Application URL not configured properly. Please contact administrator.');
+                    }
                     return;
                 }
                 
-                let url = app.application_URL;
+                let url = app.redirect_URL.trim();
+                
+                // Ensure URL has proper protocol
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    url = 'https://' + url;
+                }
                 const params = new URLSearchParams();
                 
                 if (app.parm_PKCE === 'Yes') {
@@ -477,8 +525,14 @@
                     url += (url.includes('?') ? '&' : '?') + params.toString();
                 }
                 
-                // Open application in new tab
-                window.open(url, '_blank');
+                // Validate final URL before opening
+                try {
+                    new URL(url); // This will throw if URL is invalid
+                    window.open(url, '_blank');
+                } catch (urlError) {
+                    showAlert('Invalid application URL: ' + url);
+                    return;
+                }
                 
             } catch (error) {
                 console.error('Error launching application:', error);
@@ -491,7 +545,7 @@
             // Clear session data
             localStorage.removeItem('adminSessionId');
             localStorage.removeItem('userSessionId');
-            window.location.href = 'login_client.html';
+            window.location.href = 'index.html';
         }
 
         function goToProfile() {
@@ -506,20 +560,16 @@
 
         // Initialize page
         async function initializePage() {
-            // Get user data from PKCE session if available
+            // Check for app_key parameter
             const urlParams = new URLSearchParams(window.location.search);
-            const sessionId = urlParams.get('session');
+            const appKey = urlParams.get('app_key');
             
-            if (sessionId) {
-                const pkceSession = PKCEUtils.getPKCESession(sessionId);
-                if (pkceSession && pkceSession.userData) {
-                    currentUser = pkceSession.userData;
-                    console.log('User data from PKCE session:', currentUser);
-                }
+            if (appKey) {
+                console.log('App key provided:', appKey);
+                // TODO: Handle app_key functionality
             }
             
-            // Fallback to server verification if no PKCE session
-            if (!currentUser) {
+            // Check authentication
                 console.log('Checking authentication...');
                 const adminSessionId = localStorage.getItem('adminSessionId');
                 const userSessionId = localStorage.getItem('userSessionId');
@@ -527,20 +577,19 @@
                 console.log('User session:', userSessionId);
                 
                 try {
-                    const result = await apiCall('/auth/verify');
-                    if (result.success) {
+                    const result = await apiCall('/auth/me');
+                    if (result && result.success) {
                         currentUser = result.data;
                         console.log('User authenticated:', currentUser);
                     } else {
-                        redirectToLogin('Authentication failed. Please login again.');
+                        await redirectToLogin('Authentication failed. Please login again.');
                         return;
                     }
                 } catch (error) {
                     console.log('Authentication check failed:', error.message);
-                    redirectToLogin('Session expired. Please login again.');
+                    await redirectToLogin('Session expired. Please login again.');
                     return;
                 }
-            }
 
             // Setup role-specific button
             const roleButton = document.getElementById('roleButton');
@@ -562,7 +611,9 @@
         // Initialize when page loads
         document.addEventListener('DOMContentLoaded', () => {
             // Small delay to ensure localStorage is set from previous page
-            setTimeout(initializePage, 100);
+            setTimeout(async () => {
+                await initializePage();
+            }, 100);
         });
     </script>
 </body>

@@ -1,12 +1,22 @@
 // SecureAccess JavaScript File
-// Database connection parameters
-const DB_CONFIG = {
-    host: 'localhost',
-    port: 3306,
-    database: 'secureaccess2',
-    username: 'UserName',
-    password: 'PassWord'
-};
+// Configuration from environment
+let CONFIG;
+try {
+    if (!process || !process.env) {
+        throw new Error('Process environment not available');
+    }
+    CONFIG = {
+        apiUrl: process.env.API_URL || 'http://localhost:55351',
+        appName: process.env.APP_NAME || 'SecureAccess'
+    };
+} catch (error) {
+    const errorMessage = error && error.message ? error.message : 'Unknown configuration error';
+    console.error('Configuration error:', errorMessage);
+    CONFIG = {
+        apiUrl: 'http://localhost:55351',
+        appName: 'SecureAccess'
+    };
+}
 
 // Get URL parameters
 function getUrlParameter(name) {

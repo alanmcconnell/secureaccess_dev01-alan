@@ -67,11 +67,10 @@ const getAllApplications = async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error fetching applications:', error);
+    console.error('Error fetching applications:', error?.message || 'Unknown error');
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch applications',
-      error: error.message
+      message: 'Failed to fetch applications'
     });
   }
 };
@@ -141,7 +140,7 @@ const getUserApplications = async (req, res) => {
     const userId = req.user.user_id;
     
     const [rows] = await pool.execute(`
-      SELECT a.application_id, a.application_name, a.application_URL, a.description
+      SELECT a.application_id, a.application_name, a.redirect_URL, a.description
       FROM sa_applications a
       INNER JOIN sa_app_user au ON a.application_id = au.application_id
       WHERE au.user_id = ?

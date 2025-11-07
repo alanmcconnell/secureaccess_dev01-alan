@@ -32,6 +32,23 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// CSRF protection middleware
+const csrfProtection = (req, res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+        return next();
+    }
+    
+    const token = req.headers['x-requested-with'];
+    if (!token || token !== 'XMLHttpRequest') {
+        return res.status(403).json({
+            success: false,
+            message: 'Invalid request'
+        });
+    }
+    
+    next();
+};
+
 // Apply general rate limiting to auth routes
 router.use(authRateLimit);
 
@@ -79,16 +96,17 @@ router.post('/verify-admin', authenticateToken, (req, res) => {
       }
     });
   } catch (error) {
+    const errorMessage = error && error.message ? error.message : 'Unknown error';
+    console.error('Admin verification error:', errorMessage);
     res.status(500).json({
       success: false,
-      message: 'Admin verification failed',
-      error: error.message
+      message: 'Admin verification failed'
     });
   }
 });
 
 // POST /api/auth/authorize - Generate PKCE authorization code
-router.post('/authorize', authenticateToken, async (req, res) => {
+router.post('/authorize', csrfProtection, authenticateToken, async (req, res) => {
   try {
     const { 
       user_id, 
@@ -145,17 +163,17 @@ router.post('/authorize', authenticateToken, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Authorization error:', error);
+    const errorMessage = error && error.message ? error.message : 'Unknown error';
+    console.error('Authorization error:', errorMessage);
     res.status(500).json({
       success: false,
-      message: 'Failed to generate authorization code',
-      error: error.message
+      message: 'Failed to generate authorization code'
     });
   }
 });
 
 // POST /api/auth/token - Exchange authorization code for user data using PKCE
-router.post('/token', async (req, res) => {
+router.post('/token', csrfProtection, async (req, res) => {
   try {
     const { code, code_verifier, state } = req.body;
 
@@ -195,16 +213,27 @@ router.post('/token', async (req, res) => {
       });
     }
 
-    // Verify PKCE code challenge
+    // Validate code_verifier format
+    if (!code_verifier || typeof code_verifier !== 'string' || code_verifier.length < 43 || code_verifier.length > 128) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid request parameters'
+      });
+    }
+
+    // Verify PKCE code challenge using constant-time comparison
     const hash = crypto.createHash('sha256')
       .update(code_verifier)
       .digest('base64url');
     
-    if (hash !== authData.code_challenge) {
+    const expectedHash = Buffer.from(authData.code_challenge, 'base64url');
+    const actualHash = Buffer.from(hash, 'base64url');
+    
+    if (!crypto.timingSafeEqual(expectedHash, actualHash)) {
       authCodes.delete(code);
       return res.status(400).json({
         success: false,
-        message: 'Invalid code_verifier - PKCE verification failed'
+        message: 'Invalid request parameters'
       });
     }
 
@@ -231,11 +260,11 @@ router.post('/token', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Token exchange error:', error);
+    const errorMessage = error && error.message ? error.message : 'Unknown error';
+    console.error('Token exchange error:', errorMessage);
     res.status(500).json({
       success: false,
-      message: 'Failed to exchange authorization code',
-      error: error.message
+      message: 'Failed to exchange authorization code'
     });
   }
 });
