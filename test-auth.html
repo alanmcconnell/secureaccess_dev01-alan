@@ -6,11 +6,11 @@
 <body>
     <h1>Authentication Test</h1>
     <div id="result"></div>
-    
+    <script src="_config.js"></script>
     <script>
         async function testAuth() {
             try {
-                const response = await fetch('http://localhost:3000/api/auth/verify', {
+                const response = await fetch(`${window.fvaRs.SECURE_API_URL}/auth/verify`, {
                     method: 'GET',
                     credentials: 'include'
                 });

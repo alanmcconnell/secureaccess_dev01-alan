@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#  aPort="3013";     
+   aPort="55351";     
    nPort="54532";    
    aStg="server"    
    aApp="s01_server-first-api"
@@ -54,5 +54,5 @@ if [ "$1" != "" ]; then
         bOK=$(        which chrome 2>/dev/null)
 if [ "${bOK}" != "" ]; then chrome  "http://localhost:${aPort}"; fi
 
-echo "${NODEMON}" ${aSvr}  ${nPort}
+echo "${NODEMON}" ${aSvr}  ${aPort}
      "${NODEMON}" ${aSvr}  ${aPort}

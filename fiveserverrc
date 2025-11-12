@@ -1,0 +1,5 @@
+{
+  "port": 55302,
+  "root": "client/c01_client-first-app",
+  "open": "index.html"
+}

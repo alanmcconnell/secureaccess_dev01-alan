@@ -1,7 +1,7 @@
 var _CONFIG =
 { "SA_VERSION":   "2.02"
-, "CLIENT_PATH":    "http://localhost:55301"
-, "SERVER_API_URL": "http://localhost:55351/api"
+, "CLIENT_PATH":    "http://localhost:54332/client/c01_client-first-app"
+, "SERVER_API_URL": "http://localhost:54382/api2"
 , "SECURE_PATH":    "http://localhost:55301"
 , "SECURE_API_URL": "http://localhost:55351/api"
 , "REMOTE_HOST":    "https://iodd.com"

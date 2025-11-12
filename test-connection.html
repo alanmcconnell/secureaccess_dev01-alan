@@ -6,14 +6,22 @@
 <body>
     <h1>Testing Server Connection</h1>
     <div id="results"></div>
-    
+    <script src="_config.js"></script>
     <script>
         async function testConnection() {
             const results = document.getElementById('results');
             
             try {
-                console.log('Testing connection to http://localhost:3001/health');
-                const response = await fetch('http://localhost:3001/health');
+                window.fvaRs.SECURE_SERVER         = window.fvaRs.SECURE_API_URL.replace( /\/api/, '');     
+                console.log(`Testing connection to ${window.fvaRs.SECURE_SERVER}/health` );                   
+                const response = await fetch(`${window.fvaRs.SECURE_SERVER}/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'include'
+                });
                 const data = await response.json();
                 
                 results.innerHTML = `

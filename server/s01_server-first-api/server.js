@@ -111,7 +111,7 @@ const JWT_EXPIRES_IN = '24h'; // Token expires in 24 hours
 // Middleware
 const allowedOrigins = NODE_ENV === 'production' 
     ? [ `${HOST}:${PORT}`, `${HOST}`]
-    : [ `${BASE_URL}`, SECURE_PATH ];                                                   // .(51013.04.16 RAM Server: SECURE_API_URL).(51013.03.6 RAM Client: SECURE_PATH)
+    : [ `${BASE_URL}`, SECURE_PATH, 'http://127.0.0.1:49306', 'http://localhost:49306', 'http://127.0.0.1:5500', 'http://localhost:5500' ];                                                   // .(51013.04.16 RAM Server: SECURE_API_URL).(51013.03.6 RAM Client: SECURE_PATH)
 
     allowedOrigins.forEach( aHost => { if (aHost.match( /localhost/ ) ) { allowedOrigins.push( aHost.replace( /localhost/, "127.0.0.1" ) ) } } )
 
@@ -198,16 +198,15 @@ function verifyToken(req, res, next) {
     console.log('🔐 JWT Verification - Headers:', req.headers.authorization ? 'Bearer token present' : 'No Bearer token');
     console.log('🍪 JWT Verification - Cookies:', req.cookies?.authToken ? 'Auth cookie present' : 'No auth cookie');
     
-    // Check for token in HTTP-only cookie first, then Authorization header
-    let token = req.cookies?.authToken;
+    // Check for token in Authorization header first, then HTTP-only cookie
+    let token = null;
+    const authHeader = req.headers.authorization;
     
-    if (!token) {
-        const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            token = authHeader.substring(7);
-            console.log('🎫 Using Bearer token from Authorization header');
-        }
-    } else {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+        console.log('🎫 Using Bearer token from Authorization header');
+    } else if (req.cookies?.authToken) {
+        token = req.cookies.authToken;
         console.log('🎫 Using token from HTTP-only cookie');
     }
 
@@ -222,17 +221,22 @@ function verifyToken(req, res, next) {
 
     try {
         console.log('🔍 Verifying JWT token...');
+        console.log('🔑 Token preview:', token.substring(0, 50) + '...');
+        console.log('🔑 JWT_SECRET being used:', JWT_SECRET.substring(0, 20) + '...');
+        
         const decoded = jwt.verify(token, JWT_SECRET);
-        console.log('✅ JWT decoded successfully:', { user_id: decoded.user_id, username: decoded.username, role: decoded.role });
+        console.log('✅ JWT decoded successfully:', { user_id: decoded.user_id, username: decoded.username, role: decoded.role, exp: decoded.exp, iat: decoded.iat });
+        console.log('🕐 Current time:', Math.floor(Date.now() / 1000), 'Token exp:', decoded.exp);
         
         req.user = decoded;
         console.log('✅ JWT verification successful, user set:', req.user.user_id);
         next();
     } catch (error) {
         console.error('❌ JWT verification error:', error.message);
+        console.error('❌ Full error:', error);
         return res.status(401).json({
             success: false,
-            message: 'Invalid token',
+            message: 'Invalid token: ' + error.message,
             code: 'TOKEN_INVALID'
         });
     }
@@ -439,6 +443,35 @@ app.get('/api/applications', verifyToken, async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to fetch applications',
+            error: error.message
+        });
+    }
+});
+
+// Get application by app_key (public endpoint)
+app.get('/api/applications/by-key/:app_key', async (req, res) => {
+    try {
+        const appKey = req.params.app_key;
+        const [rows] = await pool.execute(`
+            SELECT * FROM sa_applications WHERE app_key = ?
+        `, [appKey]);
+        
+        if (rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Application not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: rows[0]
+        });
+    } catch (error) {
+        console.error('Error fetching application by key:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch application',
             error: error.message
         });
     }
@@ -736,20 +769,20 @@ app.get('/api/users/me', verifyToken, async (req, res) => {
         
         if (!req.user) {
             console.log('❌ No user object in request');
-            return res.status(400).json({
+            return res.status(401).json({
                 success: false,
-                message: 'Invalid user ID'
+                message: 'Authentication required'
             });
         }
         
         const userId = req.user.user_id;
         console.log('🔍 Looking up user ID:', userId, 'Type:', typeof userId);
         
-        if (!userId || isNaN(parseInt(userId))) {
-            console.log('❌ Invalid user ID format:', userId);
+        if (!userId) {
+            console.log('❌ No user ID in token:', req.user);
             return res.status(400).json({
                 success: false,
-                message: 'Invalid user ID'
+                message: 'Invalid user data in token'
             });
         }
         
@@ -1490,7 +1523,8 @@ app.post('/api/auth/login', rateLimitLogin, async (req, res) => {
             message: 'Login successful',
             data: {
                 user: userInfo,
-                token: token
+                token: token,
+                sessionId: token
             }
         });
         
@@ -1609,8 +1643,8 @@ app.post('/api/track-user', csrfCrossOrigin, verifyToken, async (req, res) => {
     }
 });
 
-// Get security questions - PUBLIC ACCESS
-app.post('/api/auth/security-questions', csrfCrossOrigin, async (req, res) => {
+// Get security questions - PUBLIC ACCESS (no CSRF protection)
+app.post('/api/auth/security-questions', async (req, res) => {
     try {
         const { username } = req.body;
         
@@ -1651,8 +1685,8 @@ app.post('/api/auth/security-questions', csrfCrossOrigin, async (req, res) => {
     }
 });
 
-// Verify security answer - PUBLIC ACCESS
-app.post('/api/auth/verify-security-answer', csrfCrossOrigin, async (req, res) => {
+// Verify security answer - PUBLIC ACCESS (no CSRF protection)
+app.post('/api/auth/verify-security-answer', async (req, res) => {
     try {
         const { username, questionNumber, answer } = req.body;
         
@@ -1714,8 +1748,8 @@ app.get('/api/auth/verify', verifyToken, async (req, res) => {
     }
 });
 
-// Update password after security verification - PUBLIC ACCESS
-app.post('/api/auth/update-password', csrfCrossOrigin, async (req, res) => {
+// Update password after security verification - PUBLIC ACCESS (no CSRF protection)
+app.post('/api/auth/update-password', async (req, res) => {
     try {
         const { username, newPassword } = req.body;
         
