@@ -111,7 +111,7 @@ const JWT_EXPIRES_IN = '24h'; // Token expires in 24 hours
 // Middleware
 const allowedOrigins = NODE_ENV === 'production' 
     ? [ `${HOST}:${PORT}`, `${HOST}`]
-    : [ `${BASE_URL}`, SECURE_PATH, 'http://127.0.0.1:49306', 'http://localhost:49306', 'http://127.0.0.1:5500', 'http://localhost:5500' ];                                                   // .(51013.04.16 RAM Server: SECURE_API_URL).(51013.03.6 RAM Client: SECURE_PATH)
+    : [ `${BASE_URL}`, SECURE_PATH, 'http://127.0.0.1:54333', 'http://localhost:54383', 'http://localhost:54333', 'http://127.0.0.1:54333' ];                                                   // .(51013.04.16 RAM Server: SECURE_API_URL).(51013.03.6 RAM Client: SECURE_PATH)
 
     allowedOrigins.forEach( aHost => { if (aHost.match( /localhost/ ) ) { allowedOrigins.push( aHost.replace( /localhost/, "127.0.0.1" ) ) } } )
 

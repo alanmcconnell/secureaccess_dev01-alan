@@ -1,7 +1,7 @@
 #!/bin/bash
 
   nPrj=55  # Can't be greater than 64   # .(51013.05.1 SecureAccess Project Number
-  nUseThisClientPort="55301"            # .(51013.05.1 RAM Override Client Port for SecureAccess)
+  nUseThisClientPort="54333"            # .(51013.05.1 RAM Override Client Port for SecureAccess)
 
   nStg=4; if [[ "$(realpath "$0")" == *dev* ]]; then nStg=3; fi
           if [[ "$(realpath "$0")" == *tes* ]]; then nStg=2; fi
