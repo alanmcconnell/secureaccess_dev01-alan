@@ -550,8 +550,16 @@
             
             if (searchParams) {
                 const params = new URLSearchParams(searchParams);
+                const regKey = params.get('reg_key');
                 const appKey = params.get('app_key');
                 const redirect = params.get('redirect');
+                
+                // Check for reg_key parameter and redirect to register.html
+                if (regKey) {
+                    console.log('FOUND reg_key, redirecting to register.html with full URL');
+                    window.location.href = 'register.html' + window.location.search;
+                    return;
+                }
                 
                 if (appKey) {
                     sessionStorage.setItem('captured_app_key', appKey);
